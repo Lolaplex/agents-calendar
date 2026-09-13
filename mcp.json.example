@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "agents-calendar": {
+      "command": "python",
+      "args": ["-m", "agents_calendar", "serve"]
+    }
+  }
+}

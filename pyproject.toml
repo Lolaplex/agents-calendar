@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agents-calendar"
+version = "0.0.1"
+description = "CalDAV calendar feeler for agents (CLI + MCP). Stdlib HTTP, no caldav/icalendar libs."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Lolaplex" }]
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0,<2",
+]
+keywords = ["caldav", "calendar", "mcp", "agents", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+[project.urls]
+Homepage = "https://github.com/Lolaplex/agents-calendar"
+Repository = "https://github.com/Lolaplex/agents-calendar"
+"Bug Tracker" = "https://github.com/Lolaplex/agents-calendar/issues"
+
+[project.scripts]
+agents-calendar = "agents_calendar.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
