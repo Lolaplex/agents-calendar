@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- README now documents install, the real CLI (`calendars` / `list` / `add` / `update` / `delete` / `serve`), MCP tools, and the verify command.
 
 ### Deprecated
 
 ### Removed
+- GitHub Release is no longer cut automatically on `v*.*.*` tags (manual `gh release create` from CHANGELOG instead).
 
 ### Fixed
 
@@ -24,3 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - CalDAV feeler: list/add/update/delete events and list calendars via CLI and MCP.
 - Stdlib HTTP client (Basic auth). Recurrence expanded by the server time-range query.
+
+[Unreleased]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/Lolaplex/agents-calendar/releases/tag/v0.0.1
