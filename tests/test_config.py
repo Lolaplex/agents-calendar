@@ -57,6 +57,34 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.username, "alice")
         self.assertEqual(settings.password, "file-secret")
 
+    def test_file_load_temp_home(self) -> None:
+        os.environ.pop("AGENTS_HOME", None)
+        root = Path(self._tmp.name) / "home"
+        agents = root / ".agents"
+        agents.mkdir(parents=True)
+        (agents / "calendar.json").write_text(
+            json.dumps({"url": "https://home.example/", "username": "home-user", "password": "home-secret"}),
+            encoding="utf-8",
+        )
+        old_home = os.environ.get("HOME")
+        old_profile = os.environ.get("USERPROFILE")
+        os.environ["HOME"] = str(root)
+        os.environ["USERPROFILE"] = str(root)
+        try:
+            settings = load_settings()
+            self.assertEqual(settings.url, "https://home.example/")
+            self.assertEqual(settings.username, "home-user")
+            self.assertEqual(settings.password, "home-secret")
+        finally:
+            if old_home is None:
+                os.environ.pop("HOME", None)
+            else:
+                os.environ["HOME"] = old_home
+            if old_profile is None:
+                os.environ.pop("USERPROFILE", None)
+            else:
+                os.environ["USERPROFILE"] = old_profile
+
     def test_env_wins_over_file(self) -> None:
         self._write_json(url="https://file.example/", username="file-user", password="file-secret")
         os.environ["CALDAV_URL"] = "https://env.example/"

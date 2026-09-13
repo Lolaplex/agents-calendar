@@ -27,6 +27,23 @@ class IcsTests(unittest.TestCase):
         self.assertEqual(to_caldav_utc("2026-09-14T08:00:00Z"), "20260914T080000Z")
         self.assertEqual(parse_iso("20260914T080000Z").year, 2026)
 
+    def test_date_only_all_day_utc(self) -> None:
+        raw = (
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:day-1\n"
+            "DTSTART:20260928\nDTEND:20260929\nSUMMARY:All day\n"
+            "END:VEVENT\nEND:VCALENDAR\n"
+        )
+        parsed = parse_vevent(raw)
+        self.assertEqual(parsed["dtstart"], "2026-09-28T00:00:00Z")
+        self.assertEqual(parsed["dtend"], "2026-09-29T00:00:00Z")
+        self.assertEqual(parse_iso("20260928").day, 28)
+        dated = parse_vevent(
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:day-2\n"
+            "DTSTART;VALUE=DATE:20260928\nSUMMARY:Flag\n"
+            "END:VEVENT\nEND:VCALENDAR\n"
+        )
+        self.assertEqual(dated["dtstart"], "2026-09-28T00:00:00Z")
+
     def test_patch_keeps_uid(self) -> None:
         raw = emit_vevent(
             uid="keep-me",

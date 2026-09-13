@@ -50,6 +50,8 @@ def parse_iso(value: str) -> datetime:
         if compact.group(3):
             return dt.replace(tzinfo=timezone.utc)
         return dt.replace(tzinfo=timezone.utc)
+    if re.fullmatch(r"\d{8}", raw):
+        return datetime.strptime(raw, "%Y%m%d").replace(tzinfo=timezone.utc)
     iso = raw.replace("Z", "+00:00")
     try:
         parsed = datetime.fromisoformat(iso)

@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Release is no longer cut automatically on `v*.*.*` tags (manual `gh release create` from CHANGELOG instead).
 
 ### Fixed
+- Discover `calendar-home-set` when `CALDAV_URL` is a host or principal (iCloud) and query each calendar.
+- Parse all-day iCalendar DATE values (`YYYYMMDD`) as UTC midnight.
 
 ### Security
 
