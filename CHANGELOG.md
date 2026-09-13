@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- CI runs only on pull requests to `main`.
 - README now documents install, the real CLI (`calendars` / `list` / `add` / `update` / `delete` / `serve`), MCP tools, and the verify command.
 
 ### Deprecated
