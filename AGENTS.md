@@ -6,6 +6,8 @@ CalDAV feeler. CLI + MCP. Events only (v0). No CardDAV. No WebDAV files. No RRUL
 
 ```bash
 python -m agents_calendar --help-json
+python -m agents_calendar sync --init
+python -m agents_calendar init
 python -m agents_calendar calendars
 python -m agents_calendar list --from 2026-09-13T00:00:00Z --to 2026-09-14T00:00:00Z
 python -m agents_calendar add --summary "Exam" --dtstart 2026-09-14T08:00:00Z --dtend 2026-09-14T10:00:00Z
@@ -13,6 +15,8 @@ python -m agents_calendar update --href <href> --etag <etag> --summary "Exam (mo
 python -m agents_calendar delete --href <href> --etag <etag>
 python -m agents_calendar serve
 ```
+
+`sync --init` / `init` merge `mcpServers.agents-calendar` into host MCP configs (Cursor, Claude, Antigravity/Gemini, Zed, Codex, VS Code Cline/Roo, Windsurf). Merge by key only; other servers stay. Cursor mkdir if `~/.cursor` missing. Never auto-write secrets.
 
 Env: `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD` (app password). Never print the password. Never store it in traces, chat, or markdown memory.
 

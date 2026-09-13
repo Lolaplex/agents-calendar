@@ -23,10 +23,12 @@ export CALDAV_PASSWORD="app-password"
 
 python -m agents_calendar calendars
 python -m agents_calendar list --from 2026-09-13T00:00:00Z --to 2026-09-14T00:00:00Z
+<<<<<<< HEAD
 python -m agents_calendar add --summary "Exam" --dtstart 2026-09-14T08:00:00Z --dtend 2026-09-14T10:00:00Z
 python -m agents_calendar update --href <href> --etag <etag> --summary "Exam (moved)"
 python -m agents_calendar delete --href <href> --etag <etag>
 python -m agents_calendar serve
+python -m agents_calendar sync --init
 ```
 
 | Command | Purpose |
@@ -37,6 +39,9 @@ python -m agents_calendar serve
 | `update --href --etag […]` | Replace (`If-Match`). Missing etag is a hard error |
 | `delete --href --etag` | Delete (`If-Match`). Missing etag is a hard error |
 | `serve` | FastMCP stdio |
+| `sync --init` / `init` | Merge `mcpServers.agents-calendar` into host MCP configs |
+
+MCP: `sync --init` (or `init`) merges `mcpServers.agents-calendar` into installed host configs (Cursor, Claude, Antigravity/Gemini, Zed, …). Merge by key only; other servers stay. Manual copy of `mcp.json.example` still works. Never writes `CALDAV_PASSWORD`.
 
 ## MCP
 

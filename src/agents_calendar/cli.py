@@ -41,6 +41,14 @@ def help_json() -> dict[str, Any]:
                 "usage": "agents-calendar serve",
                 "description": "Start FastMCP stdio server.",
             },
+            "init": {
+                "usage": "agents-calendar init",
+                "description": "Merge mcpServers.agents-calendar into host MCP configs.",
+            },
+            "sync": {
+                "usage": "agents-calendar sync --init",
+                "description": "Merge mcpServers.agents-calendar into host MCP configs.",
+            },
         },
         "flags": ["--help-json"],
         "env": ["CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD"],
@@ -58,6 +66,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("calendars", help="List calendar collections")
     sub.add_parser("serve", help="Start FastMCP stdio server")
+    sub.add_parser("init", help="Merge agents-calendar into host MCP configs")
+    sync_p = sub.add_parser("sync", help="Merge agents-calendar into host MCP configs")
+    sync_p.add_argument("--init", action="store_true", help="Perform initial host IDE registration")
 
     list_p = sub.add_parser("list", help="List events in a time range")
     list_p.add_argument("--from", dest="start", default="")
@@ -108,6 +119,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.help_json:
         print(json.dumps(help_json(), indent=2))
         return 0
+    if args.command in ("init", "sync"):
+        from .sync import main as sync_main
+
+        cmd_argv = ["--init"] if (args.command == "init" or getattr(args, "init", False)) else []
+        return sync_main(cmd_argv)
     if args.command == "serve":
         from .mcp_server import mcp
 

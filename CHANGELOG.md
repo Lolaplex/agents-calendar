@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Host MCP nest via `sync --init` / `init`: merge `mcpServers.agents-calendar` into Cursor, Claude, Antigravity/Gemini, Zed, Codex, and VS Code Cline/Roo configs without clobbering other servers.
 
 ### Changed
 - CI runs only on pull requests to `main`.
