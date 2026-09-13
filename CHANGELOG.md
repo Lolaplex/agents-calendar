@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Host MCP nest via `sync --init` / `init`: merge `mcpServers.agents-calendar` into Cursor, Claude, Antigravity/Gemini, Zed, Codex, and VS Code Cline/Roo configs without clobbering other servers.
+- Host credentials file `~/.agents/calendar.json` (mode 0600). CLI and MCP share it so Cursor MCP works without mcp.json `env`. Process env `CALDAV_*` still wins (Coolify/VPS path); `sync --init` does not write secrets into mcp.json.
 
 ### Changed
 - CI runs only on pull requests to `main`.

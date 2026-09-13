@@ -13,6 +13,7 @@ class HelpJsonTests(unittest.TestCase):
         for name in ("list", "add", "update", "delete", "calendars", "serve", "init", "sync"):
             self.assertIn(name, spec["commands"])
         self.assertIn("CALDAV_URL", spec["env"])
+        self.assertIn("calendar.json", spec["file"])
 
     def test_help_json_exit(self) -> None:
         self.assertEqual(main(["--help-json"]), 0)

@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .config import creds_path
+
 
 def mcp_entry() -> Dict[str, Any]:
     """Returns standard MCP server descriptor for agents-calendar."""
@@ -207,6 +209,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Configured MCP servers across {len(mcp_results)} host configs:")
     for r in mcp_results:
         print(f" * {r}")
+    print(f"Credentials: {creds_path()} (url, username, password). Process env CALDAV_* wins if set.")
+    print("Do not put CALDAV_PASSWORD in mcp.json.")
 
     return 0
 

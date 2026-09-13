@@ -44,4 +44,10 @@ class MergeMcpTests(unittest.TestCase):
             self.assertTrue(res.startswith("OK"))
             data = json.loads(config_file.read_text(encoding="utf-8"))
             self.assertIn("agents-calendar", data["mcpServers"])
+            self.assertNotIn("env", data["mcpServers"]["agents-calendar"])
             self.assertNotIn("CALDAV_PASSWORD", json.dumps(data))
+
+    def test_mcp_entry_has_no_secrets(self) -> None:
+        entry = mcp_entry()
+        self.assertNotIn("env", entry)
+        self.assertNotIn("CALDAV_PASSWORD", json.dumps(entry))
