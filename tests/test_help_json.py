@@ -10,9 +10,10 @@ class HelpJsonTests(unittest.TestCase):
     def test_help_json_flag(self) -> None:
         spec = help_json()
         self.assertEqual(spec["name"], "agents-calendar")
-        for name in ("list", "add", "update", "delete", "calendars", "serve"):
+        for name in ("list", "add", "update", "delete", "calendars", "serve", "init", "sync"):
             self.assertIn(name, spec["commands"])
         self.assertIn("CALDAV_URL", spec["env"])
+        self.assertIn("calendar.json", spec["file"])
 
     def test_help_json_exit(self) -> None:
         self.assertEqual(main(["--help-json"]), 0)

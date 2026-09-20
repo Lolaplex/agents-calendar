@@ -13,6 +13,7 @@ from .config import Settings
 
 DAV = "DAV:"
 CALDAV = "urn:ietf:params:xml:ns:caldav"
+_REDIRECTS = frozenset({301, 302, 303, 307, 308})
 Transport = Callable[[str, str, bytes | None, dict[str, str]], tuple[int, dict[str, str], bytes]]
 
 
@@ -45,6 +46,7 @@ class CaldavClient:
     def __init__(self, settings: Settings, transport: Transport | None = None) -> None:
         self.settings = settings
         self.base = settings.url.rstrip("/") + "/"
+        self._home: str | None = None
         self._transport = transport or self._http
 
     def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
@@ -72,6 +74,28 @@ class CaldavClient:
         except URLError as exc:
             raise CaldavError(f"CalDAV request failed: {exc.reason}") from exc
 
+    def _call(
+        self,
+        method: str,
+        url: str,
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, dict[str, str], bytes]:
+        url_now = url
+        status, hdrs, payload = 0, {}, b""
+        for _ in range(5):
+            status, hdrs, payload = self._transport(method, url_now, body, self._headers(headers))
+            if status not in _REDIRECTS:
+                return status, hdrs, payload
+            loc = (hdrs.get("location") or "").strip()
+            if not loc:
+                return status, hdrs, payload
+            nxt = self.resolve_href(loc, url_now)
+            if nxt == url_now:
+                return status, hdrs, payload
+            url_now = nxt
+        return status, hdrs, payload
+
     def request(
         self,
         method: str,
@@ -79,35 +103,92 @@ class CaldavClient:
         body: bytes | None = None,
         headers: dict[str, str] | None = None,
     ) -> tuple[int, dict[str, str], bytes]:
-        status, hdrs, payload = self._transport(method, url, body, self._headers(headers))
+        status, hdrs, payload = self._call(method, url, body, headers)
         if status == 412:
             raise PreconditionFailed("precondition failed (etag mismatch or event exists)")
         if status >= 400:
             raise CaldavError(f"CalDAV {method} {status}")
         return status, hdrs, payload
 
-    def resolve_href(self, href: str) -> str:
+    def resolve_href(self, href: str, base: str | None = None) -> str:
         raw = href.strip()
         if not raw:
             raise CaldavError("empty href")
         parsed = urlparse(raw)
         if parsed.scheme:
             return raw
-        return urljoin(self.base, raw.lstrip("/"))
+        return urljoin(base or self._home or self.base, raw)
 
-    def calendars(self) -> list[dict[str, Any]]:
+    def _origin(self) -> str:
+        parsed = urlparse(self.settings.url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    def _propfind(self, url: str, depth: str, body: bytes) -> tuple[int, bytes]:
+        status, _hdrs, payload = self._call(
+            "PROPFIND",
+            url,
+            body,
+            {"Content-Type": "application/xml; charset=utf-8", "Depth": depth},
+        )
+        return status, payload
+
+    def _href_under(self, node: ET.Element, ns: str, name: str, base: str) -> str:
+        parent = node.find(f".//{_tag(ns, name)}")
+        if parent is None:
+            return ""
+        href_el = parent.find(f".//{_tag(DAV, 'href')}")
+        if href_el is None or not (href_el.text or "").strip():
+            return ""
+        return self.resolve_href(href_el.text.strip(), base)
+
+    def _href_under_root(self, payload: bytes, ns: str, name: str, base: str) -> str:
+        if not payload.strip():
+            return ""
+        try:
+            root = ET.fromstring(payload)
+        except ET.ParseError:
+            return ""
+        return self._href_under(root, ns, name, base)
+
+    def _discover_home(self) -> str:
+        if self._home:
+            return self._home
         body = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            f'<d:propfind xmlns:d="{DAV}" xmlns:c="{CALDAV}">'
+            "<d:prop><d:current-user-principal/><c:calendar-home-set/><d:resourcetype/></d:prop>"
+            "</d:propfind>"
+        ).encode("utf-8")
+        origin = self._origin()
+        queue = [self.base, f"{origin}/.well-known/caldav"]
+        seen: set[str] = set()
+        while queue:
+            url = queue.pop(0)
+            key = url.rstrip("/")
+            if key in seen:
+                continue
+            seen.add(key)
+            status, payload = self._propfind(url, "0", body)
+            if status >= 400:
+                continue
+            home = self._href_under_root(payload, CALDAV, "calendar-home-set", url)
+            if home:
+                self._home = home.rstrip("/") + "/"
+                return self._home
+            principal = self._href_under_root(payload, DAV, "current-user-principal", url)
+            if principal:
+                queue.insert(0, principal.rstrip("/") + "/")
+        raise CaldavError("CalDAV calendar-home-set not found")
+
+    def _list_body(self) -> bytes:
+        return (
             '<?xml version="1.0" encoding="utf-8"?>'
             f'<d:propfind xmlns:d="{DAV}" xmlns:c="{CALDAV}">'
             "<d:prop><d:displayname/><d:resourcetype/><d:getetag/></d:prop>"
             "</d:propfind>"
         ).encode("utf-8")
-        _status, _hdrs, payload = self.request(
-            "PROPFIND",
-            self.base,
-            body,
-            {"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
-        )
+
+    def _parse_calendars(self, payload: bytes, base: str) -> list[dict[str, Any]]:
         rows = []
         for href, etag, node in self._responses(payload):
             rtype = node.find(f".//{_tag(DAV, 'resourcetype')}")
@@ -118,17 +199,30 @@ class CaldavClient:
                 continue
             rows.append(
                 {
-                    "href": href,
+                    "href": self.resolve_href(href, base),
                     "etag": etag,
                     "displayname": _child_text(node, DAV, "displayname") or href,
                 }
             )
         return rows
 
-    def list_events(self, start: str, end: str) -> list[dict[str, Any]]:
+    def calendars(self) -> list[dict[str, Any]]:
+        body = self._list_body()
+        status, payload = self._propfind(self.base, "1", body)
+        if status < 400:
+            rows = self._parse_calendars(payload, self.base)
+            if rows:
+                return rows
+        home = self._discover_home()
+        status, payload = self._propfind(home, "1", body)
+        if status >= 400:
+            raise CaldavError(f"CalDAV PROPFIND {status}")
+        return self._parse_calendars(payload, home)
+
+    def _query_body(self, start: str, end: str) -> bytes:
         start_c = ics.to_caldav_utc(start)
         end_c = ics.to_caldav_utc(end)
-        body = (
+        return (
             '<?xml version="1.0" encoding="utf-8"?>'
             f'<c:calendar-query xmlns:d="{DAV}" xmlns:c="{CALDAV}">'
             "<d:prop><d:getetag/><c:calendar-data/></d:prop>"
@@ -138,12 +232,8 @@ class CaldavClient:
             "</c:comp-filter></c:comp-filter></c:filter>"
             "</c:calendar-query>"
         ).encode("utf-8")
-        _status, _hdrs, payload = self.request(
-            "REPORT",
-            self.base,
-            body,
-            {"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
-        )
+
+    def _events_from(self, payload: bytes) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
         for href, etag, node in self._responses(payload):
             data = _child_text(node, CALDAV, "calendar-data")
@@ -153,6 +243,39 @@ class CaldavClient:
             parsed["href"] = href
             parsed["etag"] = etag
             events.append(parsed)
+        return events
+
+    def _report(self, url: str, body: bytes) -> tuple[int, list[dict[str, Any]]]:
+        status, _hdrs, payload = self._call(
+            "REPORT",
+            url,
+            body,
+            {"Content-Type": "application/xml; charset=utf-8", "Depth": "1"},
+        )
+        if status >= 400:
+            return status, []
+        return status, self._events_from(payload)
+
+    def list_events(self, start: str, end: str) -> list[dict[str, Any]]:
+        body = self._query_body(start, end)
+        status, events = self._report(self.base, body)
+        if status < 400:
+            events.sort(key=lambda row: str(row.get("dtstart") or ""))
+            return events
+        events = []
+        last_status = status
+        cals = self.calendars()
+        targets = [self.resolve_href(row["href"]) for row in cals]
+        if not targets and self._home:
+            targets = [self._home]
+        for target in targets:
+            url = target if target.endswith("/") else target + "/"
+            st, rows = self._report(url, body)
+            last_status = st
+            if st < 400:
+                events.extend(rows)
+        if not events and last_status >= 400 and not cals:
+            raise CaldavError(f"CalDAV REPORT {last_status}")
         events.sort(key=lambda row: str(row.get("dtstart") or ""))
         return events
 
