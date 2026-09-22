@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 ### Fixed
+- `add` writes the event into a VEVENT collection. A CalDAV home or principal URL is no longer used as the PUT target, and reminder collections that only allow VTODO are skipped. HTTP errors include a short response snippet.
 
 ### Security
 

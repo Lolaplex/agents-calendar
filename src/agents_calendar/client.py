@@ -42,6 +42,26 @@ def _local(el: ET.Element) -> str:
     return el.tag
 
 
+def _error_detail(payload: bytes) -> str:
+    text = " ".join(payload.decode("utf-8", errors="replace").split())
+    if not text:
+        return ""
+    if len(text) > 160:
+        text = text[:160] + "..."
+    return f": {text}"
+
+
+def _components(node: ET.Element) -> list[str]:
+    names: list[str] = []
+    for el in node.iter():
+        if _local(el) != "comp":
+            continue
+        name = (el.attrib.get("name") or "").strip().upper()
+        if name:
+            names.append(name)
+    return names
+
+
 class CaldavClient:
     def __init__(self, settings: Settings, transport: Transport | None = None) -> None:
         self.settings = settings
@@ -107,7 +127,7 @@ class CaldavClient:
         if status == 412:
             raise PreconditionFailed("precondition failed (etag mismatch or event exists)")
         if status >= 400:
-            raise CaldavError(f"CalDAV {method} {status}")
+            raise CaldavError(f"CalDAV {method} {status}{_error_detail(payload)}")
         return status, hdrs, payload
 
     def resolve_href(self, href: str, base: str | None = None) -> str:
@@ -184,7 +204,7 @@ class CaldavClient:
         return (
             '<?xml version="1.0" encoding="utf-8"?>'
             f'<d:propfind xmlns:d="{DAV}" xmlns:c="{CALDAV}">'
-            "<d:prop><d:displayname/><d:resourcetype/><d:getetag/></d:prop>"
+            "<d:prop><d:displayname/><d:resourcetype/><d:getetag/><c:supported-calendar-component-set/></d:prop>"
             "</d:propfind>"
         ).encode("utf-8")
 
@@ -202,6 +222,7 @@ class CaldavClient:
                     "href": self.resolve_href(href, base),
                     "etag": etag,
                     "displayname": _child_text(node, DAV, "displayname") or href,
+                    "components": _components(node),
                 }
             )
         return rows
@@ -279,6 +300,37 @@ class CaldavClient:
         events.sort(key=lambda row: str(row.get("dtstart") or ""))
         return events
 
+    def _event_collection(self) -> str:
+        """Collection that accepts VEVENT. The configured URL wins when it is one."""
+        if self._is_event_calendar(self.base):
+            return self.base
+        try:
+            rows = self.calendars()
+        except CaldavError:
+            return self.base
+        vevent = [row for row in rows if not row.get("components") or "VEVENT" in row["components"]]
+        if not vevent:
+            return self.base
+        href = str(vevent[0]["href"])
+        return href if href.endswith("/") else href + "/"
+
+    def _is_event_calendar(self, url: str) -> bool:
+        status, payload = self._propfind(url, "0", self._list_body())
+        if status >= 400 or not payload.strip():
+            return False
+        try:
+            responses = self._responses(payload)
+        except CaldavError:
+            return False
+        for _href, _etag, node in responses:
+            rtype = node.find(f".//{_tag(DAV, 'resourcetype')}")
+            if rtype is None or not any(_local(child) == "calendar" for child in list(rtype)):
+                continue
+            comps = _components(node)
+            if not comps or "VEVENT" in comps:
+                return True
+        return False
+
     def add_event(
         self,
         *,
@@ -298,7 +350,7 @@ class CaldavClient:
             location=location,
             description=description,
         )
-        href = urljoin(self.base, f"{event_uid}.ics")
+        href = urljoin(self._event_collection(), f"{event_uid}.ics")
         status, hdrs, _body = self.request(
             "PUT",
             href,

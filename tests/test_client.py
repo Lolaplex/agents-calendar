@@ -95,7 +95,9 @@ class ClientTests(unittest.TestCase):
             uid="fixed-uid",
         )
         self.assertEqual(row["uid"], "fixed-uid")
-        self.assertEqual(transport.calls[0][3].get("If-None-Match"), "*")
+        puts = [call for call in transport.calls if call[0] == "PUT"]
+        self.assertEqual(puts[0][3].get("If-None-Match"), "*")
+        self.assertTrue(puts[0][1].endswith("/fixed-uid.ics"))
         with self.assertRaises(PreconditionFailed):
             client.add_event(
                 summary="Exam",
@@ -178,6 +180,97 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(methods[0], "REPORT")
         self.assertIn("PROPFIND", methods)
         self.assertGreaterEqual(methods.count("REPORT"), 2)
+
+    def test_add_puts_into_vevent_collection(self) -> None:
+        wellknown = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            "<d:response><d:href>/.well-known/caldav</d:href><d:propstat><d:prop>"
+            "<d:current-user-principal><d:href>/123/principal/</d:href></d:current-user-principal>"
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "</d:multistatus>"
+        ).encode("utf-8")
+        principal = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            "<d:response><d:href>/123/principal/</d:href><d:propstat><d:prop>"
+            "<c:calendar-home-set><d:href>/123/calendars/</d:href></c:calendar-home-set>"
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "</d:multistatus>"
+        ).encode("utf-8")
+        home = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            "<d:response><d:href>/123/calendars/reminders/</d:href><d:propstat><d:prop>"
+            "<d:displayname>Reminders</d:displayname>"
+            "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>"
+            '<c:supported-calendar-component-set><c:comp name="VTODO"/></c:supported-calendar-component-set>'
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "<d:response><d:href>/123/calendars/work/</d:href><d:propstat><d:prop>"
+            "<d:displayname>Work</d:displayname>"
+            "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>"
+            '<c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>'
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "</d:multistatus>"
+        ).encode("utf-8")
+        transport = FakeTransport()
+        transport.add("PROPFIND", "https://caldav.icloud.com/", 400, b"<error>not a collection</error>")
+        transport.add("PROPFIND", ".well-known/caldav", 207, wellknown)
+        transport.add("PROPFIND", "/123/principal/", 207, principal)
+        transport.add("PROPFIND", "/123/calendars/", 207, home)
+        client = CaldavClient(
+            Settings(url="https://caldav.icloud.com", username="user", password="secret"),
+            transport=transport,
+        )
+        row = client.add_event(
+            summary="Mittagspause",
+            dtstart="2026-09-22T10:00:00Z",
+            dtend="2026-09-22T11:00:00Z",
+            uid="pause-uid",
+        )
+        self.assertTrue(row["href"].endswith("/123/calendars/work/pause-uid.ics"))
+        self.assertNotIn("caldav.icloud.com/pause-uid.ics", row["href"])
+
+    def test_put_error_includes_body(self) -> None:
+        class Reject(FakeTransport):
+            def __call__(self, method, url, body, headers):
+                if method == "PUT":
+                    return 400, {}, b"<d:error>valid-calendar-object-resource</d:error>"
+                return super().__call__(method, url, body, headers)
+
+        client = CaldavClient(_settings(), transport=Reject())
+        with self.assertRaises(CaldavError) as caught:
+            client.add_event(
+                summary="Exam",
+                dtstart="2026-09-14T08:00:00Z",
+                dtend="2026-09-14T10:00:00Z",
+                uid="bad-uid",
+            )
+        self.assertIn("400", str(caught.exception))
+        self.assertIn("valid-calendar-object-resource", str(caught.exception))
+
+    def test_add_keeps_configured_collection(self) -> None:
+        depth0 = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            "<d:response><d:href>/calendars/user/default/</d:href><d:propstat><d:prop>"
+            "<d:displayname>Personal</d:displayname>"
+            "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>"
+            '<c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>'
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "</d:multistatus>"
+        ).encode("utf-8")
+        transport = FakeTransport()
+        transport.add("PROPFIND", "/calendars/user/default/", 207, depth0)
+        client = CaldavClient(_settings(), transport=transport)
+        row = client.add_event(
+            summary="Exam",
+            dtstart="2026-09-14T08:00:00Z",
+            dtend="2026-09-14T10:00:00Z",
+            uid="pinned-uid",
+        )
+        self.assertTrue(row["href"].endswith("/calendars/user/default/pinned-uid.ics"))
+        self.assertEqual([call[0] for call in transport.calls], ["PROPFIND", "PUT"])
 
 
 if __name__ == "__main__":
