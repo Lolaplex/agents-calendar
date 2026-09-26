@@ -102,6 +102,17 @@ No subcommand prints help.
 
 ---
 
+## ABI
+
+Contract in [`abi/`](abi/):
+
+- [`WHY.md`](abi/WHY.md) — server-side recurrence and etags
+- [`LAYOUT.md`](abi/LAYOUT.md) — credential file
+- [`MCP.md`](abi/MCP.md) — five tools
+- [`CLI.md`](abi/CLI.md) — the same verbs, plus `init`
+
+---
+
 ## Tests
 
 ```bash
