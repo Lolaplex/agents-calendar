@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-09-26
+
+### Added
+- ABI contract in `abi/` for credentials, the five MCP tools, and the CLI.
+
+### Changed
+- README matches the live CLI and the five MCP tools. `init` is the alias of `sync --init`. Bare `agents-calendar` prints help.
+
 ## [0.0.2] - 2026-09-26
 
 ### Changed
@@ -32,7 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Discover `calendar-home-set` when `CALDAV_URL` is a host or principal (iCloud) and query each calendar.
 - Parse all-day iCalendar DATE values (`YYYYMMDD`) as UTC midnight.
 
-[Unreleased]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/Lolaplex/agents-calendar/releases/tag/v0.0.1
 
