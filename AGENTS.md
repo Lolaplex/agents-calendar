@@ -25,7 +25,7 @@ Host file `~/.agents/calendar.json` (mode `0600`): keys `url`, `username`, `pass
 Load order (highest wins): process env `CALDAV_URL` / `CALDAV_USERNAME` / `CALDAV_PASSWORD`, else the JSON file, else `~/.agents/.env` with `CALDAV_*`. Optional mcp.json `env` still works (process env wins).
 
 - Desktop: `~/.agents/calendar.json` (0600). Cursor MCP: file primary; mcp.json `env` optional.
-- VPS / `klanker serve`: Coolify env `CALDAV_*`. Never git, never chat.
+- Production / Docker: Environment variables `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`. Never git, never chat.
 
 Never print the password. Never store it in traces, chat, markdown memory, or mcp.json.
 
