@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
 ### Changed
+- Refined README with full benchmark specification (architecture diagram, MCP tools table, CLI reference, and quickstarts).
+- Cleaned production environment setup notes in documentation.
 
 ### Deprecated
 
