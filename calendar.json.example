@@ -1,5 +1,6 @@
 {
   "url": "https://example/dav/calendars/user/calendar/",
   "username": "user",
-  "password": "app-password"
+  "password": "app-password",
+  "calendar": "Arbeit"
 }

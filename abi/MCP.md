@@ -6,11 +6,11 @@ Server: `python -m agents_calendar serve` (FastMCP). Tool results are JSON. Erro
 
 Collections under the configured URL.
 
-### `calendar_list(start, end)`
+### `calendar_list(start, end, calendar="")`
 
-`VEVENT`s between two ISO-8601 timestamps. The server expands recurrence. Each item includes the `href` and `etag` required for update and delete.
+`VEVENT`s between two ISO-8601 timestamps. The server expands recurrence. Optional `calendar` collection name or URL. Each item includes the `href` and `etag` required for update and delete.
 
-### `calendar_add(summary, dtstart, dtend, location="", description="")`
+### `calendar_add(summary, dtstart, dtend, calendar="", location="", description="")`
 
 Create. `If-None-Match: *`.
 

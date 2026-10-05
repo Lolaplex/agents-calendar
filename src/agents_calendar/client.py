@@ -277,8 +277,15 @@ class CaldavClient:
             return status, []
         return status, self._events_from(payload)
 
-    def list_events(self, start: str, end: str) -> list[dict[str, Any]]:
+    def list_events(self, start: str, end: str, calendar: str | None = None) -> list[dict[str, Any]]:
         body = self._query_body(start, end)
+        if calendar:
+            target_col = self._event_collection(calendar)
+            status, events = self._report(target_col, body)
+            if status >= 400:
+                raise CaldavError(f"CalDAV REPORT {status}")
+            events.sort(key=lambda row: str(row.get("dtstart") or ""))
+            return events
         status, events = self._report(self.base, body)
         if status < 400:
             events.sort(key=lambda row: str(row.get("dtstart") or ""))
@@ -300,8 +307,40 @@ class CaldavClient:
         events.sort(key=lambda row: str(row.get("dtstart") or ""))
         return events
 
-    def _event_collection(self) -> str:
+    def _event_collection(self, target: str | None = None) -> str:
         """Collection that accepts VEVENT. The configured URL wins when it is one."""
+        desired = (target or "").strip() or self.settings.calendar.strip()
+        if desired:
+            try:
+                rows = self.calendars()
+            except CaldavError:
+                rows = []
+
+            desired_lower = desired.lower()
+            for row in rows:
+                if (row.get("displayname") or "").strip().lower() == desired_lower:
+                    if row.get("components") and "VEVENT" not in row["components"]:
+                        raise CaldavError(f"Calendar '{desired}' does not support VEVENT")
+                    href = str(row["href"])
+                    return href if href.endswith("/") else href + "/"
+
+            for row in rows:
+                row_href = str(row.get("href") or "").rstrip("/")
+                row_slug = urlparse(row_href).path.rstrip("/").split("/")[-1].lower()
+                target_slug = urlparse(desired).path.rstrip("/").split("/")[-1].lower()
+                if row_href == desired.rstrip("/") or row_slug == target_slug:
+                    if row.get("components") and "VEVENT" not in row["components"]:
+                        raise CaldavError(f"Calendar '{desired}' does not support VEVENT")
+                    return row_href + "/"
+
+            if desired.startswith("http://") or desired.startswith("https://") or desired.startswith("/"):
+                direct_url = self.resolve_href(desired)
+                if self._is_event_calendar(direct_url):
+                    return direct_url if direct_url.endswith("/") else direct_url + "/"
+
+            names = [r.get("displayname") or r.get("href") for r in rows]
+            raise CaldavError(f"Calendar '{desired}' not found. Available: {', '.join(str(n) for n in names)}")
+
         if self._is_event_calendar(self.base):
             return self.base
         try:
@@ -337,6 +376,7 @@ class CaldavClient:
         summary: str,
         dtstart: str,
         dtend: str,
+        calendar: str | None = None,
         location: str = "",
         description: str = "",
         uid: str | None = None,
@@ -350,7 +390,7 @@ class CaldavClient:
             location=location,
             description=description,
         )
-        href = urljoin(self._event_collection(), f"{event_uid}.ics")
+        href = urljoin(self._event_collection(calendar), f"{event_uid}.ics")
         status, hdrs, _body = self.request(
             "PUT",
             href,

@@ -9,7 +9,7 @@ from pathlib import Path
 from agents_calendar.config import ConfigError, load_settings
 
 
-_KEYS = ("CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD")
+_KEYS = ("CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD", "CALDAV_CALENDAR")
 
 
 class ConfigTests(unittest.TestCase):
@@ -124,3 +124,17 @@ class ConfigTests(unittest.TestCase):
         msg = str(ctx.exception)
         self.assertIn("invalid", msg)
         self.assertNotIn("leaked-secret", msg)
+
+    def test_calendar_setting_from_file_and_env(self) -> None:
+        self._write_json(
+            url="https://dav.example/",
+            username="alice",
+            password="secret",
+            calendar="Work",
+        )
+        settings = load_settings()
+        self.assertEqual(settings.calendar, "Work")
+
+        os.environ["CALDAV_CALENDAR"] = "Personal"
+        settings_env = load_settings()
+        self.assertEqual(settings_env.calendar, "Personal")
