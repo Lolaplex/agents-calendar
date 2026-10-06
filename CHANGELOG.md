@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- CI is one job on every pull request and on manual dispatch: Ubuntu, Python 3.12, tests, then build and `twine check`. The merge notification workflows and the failure webhook job are removed.
+
 ## [0.0.3] - 2026-09-26
 
 ### Added
