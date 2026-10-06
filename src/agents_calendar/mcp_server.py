@@ -10,6 +10,13 @@ from .config import ConfigError, load_settings
 from .ics import IcsError
 
 mcp = FastMCP("agents-calendar")
+try:
+    from . import __version__
+    from .updates import attach_mcp_update_notice
+
+    attach_mcp_update_notice(mcp, "agents-calendar", __version__)
+except Exception:
+    pass
 
 
 def _client() -> CaldavClient:
