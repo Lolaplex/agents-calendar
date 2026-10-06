@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `--calendar NAME` on `list` and `add`, and `calendar` on the `calendar_list` / `calendar_add` MCP tools, pick a collection by display name or URL. `CALDAV_CALENDAR` (or `calendar` in `calendar.json`) sets the default collection for `add`. An unknown name fails with the list of available calendars.
+- CLI (and MCP, when present) check PyPI at most once per day for a newer release and print one stderr / tool-response line (`uv tool upgrade …`). Disabled with `AGENTS_NO_UPDATE_CHECK=1` or when `CI` is set; offline/timeout stays silent.
 
 ## [0.0.3] - 2026-09-26
 

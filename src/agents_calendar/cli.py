@@ -127,6 +127,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.help_json:
         print(json.dumps(help_json(), indent=2))
         return 0
+    if args.command != "serve":
+        try:
+            from .updates import check_for_updates
+
+            check_for_updates("agents-calendar", __version__)
+        except Exception:
+            pass
     if args.command in ("init", "sync"):
         from .sync import main as sync_main
 
