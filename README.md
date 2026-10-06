@@ -39,7 +39,7 @@ The password is never printed, logged, or returned by a tool.
 
 Highest priority first:
 
-1. Process env: `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`
+1. Process env: `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`, optional `CALDAV_CALENDAR`
 2. `~/.agents/calendar.json` (mode `0600`)
 3. `~/.agents/.env` keys `CALDAV_*`
 
@@ -47,9 +47,12 @@ Highest priority first:
 {
   "url": "https://example.com/dav/calendars/user/calendar/",
   "username": "user",
-  "password": "app-password"
+  "password": "app-password",
+  "calendar": "Work"
 }
 ```
+
+`calendar` (or `CALDAV_CALENDAR`) is optional: the collection, by display name or URL, that `add` writes to. `list` searches every collection unless `--calendar` names one. Both commands and the MCP tools accept `calendar` per call.
 
 CLI and MCP both read this file, so a desktop host does not need the password in its MCP config. A URL that is only a host or principal is resolved through `calendar-home-set`. `add` writes into a VEVENT collection, not a reminder collection.
 

@@ -9,8 +9,8 @@ python -m agents_calendar --help-json
 python -m agents_calendar sync --init
 python -m agents_calendar init
 python -m agents_calendar calendars
-python -m agents_calendar list --from 2026-09-13T00:00:00Z --to 2026-09-14T00:00:00Z [--calendar "Arbeit"]
-python -m agents_calendar add --summary "Exam" --dtstart 2026-09-14T08:00:00Z --dtend 2026-09-14T10:00:00Z [--calendar "Arbeit"]
+python -m agents_calendar list --from 2026-09-13T00:00:00Z --to 2026-09-14T00:00:00Z [--calendar "Work"]
+python -m agents_calendar add --summary "Exam" --dtstart 2026-09-14T08:00:00Z --dtend 2026-09-14T10:00:00Z [--calendar "Work"]
 python -m agents_calendar update --href <href> --etag <etag> --summary "Exam (moved)"
 python -m agents_calendar delete --href <href> --etag <etag>
 python -m agents_calendar serve

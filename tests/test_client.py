@@ -282,7 +282,7 @@ class ClientTests(unittest.TestCase):
             '<c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>'
             "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
             "<d:response><d:href>/123/calendars/work/</d:href><d:propstat><d:prop>"
-            "<d:displayname>Arbeit</d:displayname>"
+            "<d:displayname>Work</d:displayname>"
             "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>"
             '<c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>'
             "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
@@ -328,12 +328,12 @@ class ClientTests(unittest.TestCase):
         )
         self.assertTrue(row1["href"].endswith("/123/calendars/uni/uni-uid.ics"))
 
-        # Explicit --calendar Arbeit picks Arbeit
+        # Explicit --calendar Work picks Work
         row2 = client.add_event(
             summary="Meeting",
             dtstart="2026-09-14T11:00:00Z",
             dtend="2026-09-14T12:00:00Z",
-            calendar="Arbeit",
+            calendar="Work",
             uid="work-uid",
         )
         self.assertTrue(row2["href"].endswith("/123/calendars/work/work-uid.ics"))

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--calendar NAME` on `list` and `add`, and `calendar` on the `calendar_list` / `calendar_add` MCP tools, pick a collection by display name or URL. `CALDAV_CALENDAR` (or `calendar` in `calendar.json`) sets the default collection for `add`. An unknown name fails with the list of available calendars.
+
 ## [0.0.3] - 2026-09-26
 
 ### Added
