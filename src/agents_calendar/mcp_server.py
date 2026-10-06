@@ -10,6 +10,13 @@ from .config import ConfigError, load_settings
 from .ics import IcsError
 
 mcp = FastMCP("agents-calendar")
+try:
+    from . import __version__
+    from .updates import attach_mcp_update_notice
+
+    attach_mcp_update_notice(mcp, "agents-calendar", __version__)
+except Exception:
+    pass
 
 
 def _client() -> CaldavClient:
@@ -34,10 +41,10 @@ def calendar_calendars() -> str:
 
 
 @mcp.tool()
-def calendar_list(start: str, end: str) -> str:
+def calendar_list(start: str, end: str, calendar: str = "") -> str:
     """List VEVENTs between ISO start and end. Server expands recurrence."""
     try:
-        return _ok(_client().list_events(start, end))
+        return _ok(_client().list_events(start, end, calendar=calendar or None))
     except (ConfigError, CaldavError, IcsError, ValueError) as exc:
         return _err(exc)
 
@@ -47,6 +54,7 @@ def calendar_add(
     summary: str,
     dtstart: str,
     dtend: str,
+    calendar: str = "",
     location: str = "",
     description: str = "",
 ) -> str:
@@ -57,6 +65,7 @@ def calendar_add(
                 summary=summary,
                 dtstart=dtstart,
                 dtend=dtend,
+                calendar=calendar or None,
                 location=location,
                 description=description,
             )

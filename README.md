@@ -1,5 +1,7 @@
+<h1 align="center">agents-calendar</h1>
+
 <p align="center">
-  <a href="https://github.com/Lolaplex/agents-calendar/releases"><img src="https://img.shields.io/badge/version-0.0.3-blue.svg?style=flat-square" alt="Version 0.0.3"></a>
+  <a href="https://github.com/Lolaplex/agents-calendar/releases"><img src="https://img.shields.io/badge/version-0.1.0-blue.svg?style=flat-square" alt="Version 0.1.0"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Standard-orange.svg?style=flat-square" alt="MCP"></a>
   <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+"></a>
   <a href="https://pypi.org/project/agents-calendar/"><img src="https://img.shields.io/pypi/v/agents-calendar.svg?style=flat-square" alt="PyPI"></a>
@@ -39,7 +41,7 @@ The password is never printed, logged, or returned by a tool.
 
 Highest priority first:
 
-1. Process env: `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`
+1. Process env: `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`, optional `CALDAV_CALENDAR`
 2. `~/.agents/calendar.json` (mode `0600`)
 3. `~/.agents/.env` keys `CALDAV_*`
 
@@ -47,9 +49,12 @@ Highest priority first:
 {
   "url": "https://example.com/dav/calendars/user/calendar/",
   "username": "user",
-  "password": "app-password"
+  "password": "app-password",
+  "calendar": "Work"
 }
 ```
+
+`calendar` (or `CALDAV_CALENDAR`) is optional: the collection, by display name or URL, that `add` writes to. `list` searches every collection unless `--calendar` names one. Both commands and the MCP tools accept `calendar` per call.
 
 CLI and MCP both read this file, so a desktop host does not need the password in its MCP config. A URL that is only a host or principal is resolved through `calendar-home-set`. `add` writes into a VEVENT collection, not a reminder collection.
 

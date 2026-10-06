@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-06
+
+### Added
+- `--calendar NAME` on `list` and `add`, and `calendar` on the `calendar_list` / `calendar_add` MCP tools, pick a collection by display name or URL. `CALDAV_CALENDAR` (or `calendar` in `calendar.json`) sets the default collection for `add`. An unknown name fails with the list of available calendars.
+- CLI (and MCP, when present) check PyPI at most once per day for a newer release and print one stderr / tool-response line (`uv tool upgrade …`). Disabled with `AGENTS_NO_UPDATE_CHECK=1` or when `CI` is set; offline/timeout stays silent.
+
 ## [0.0.3] - 2026-09-26
 
 ### Added
@@ -40,7 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Discover `calendar-home-set` when `CALDAV_URL` is a host or principal (iCloud) and query each calendar.
 - Parse all-day iCalendar DATE values (`YYYYMMDD`) as UTC midnight.
 
-[Unreleased]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/Lolaplex/agents-calendar/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.3...v0.1.0
 [0.0.3]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/Lolaplex/agents-calendar/releases/tag/v0.0.1

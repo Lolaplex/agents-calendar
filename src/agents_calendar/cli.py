@@ -22,11 +22,11 @@ def help_json() -> dict[str, Any]:
                 "description": "List calendar collections under CALDAV_URL.",
             },
             "list": {
-                "usage": "agents-calendar list --from ISO --to ISO",
+                "usage": "agents-calendar list [--calendar NAME] --from ISO --to ISO",
                 "description": "List VEVENTs in the time range. Server expands recurrence.",
             },
             "add": {
-                "usage": "agents-calendar add --summary TEXT --dtstart ISO --dtend ISO [--location TEXT] [--description TEXT]",
+                "usage": "agents-calendar add [--calendar NAME] --summary TEXT --dtstart ISO --dtend ISO [--location TEXT] [--description TEXT]",
                 "description": "Create a VEVENT (If-None-Match: *).",
             },
             "update": {
@@ -51,7 +51,7 @@ def help_json() -> dict[str, Any]:
             },
         },
         "flags": ["--help-json"],
-        "env": ["CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD"],
+        "env": ["CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD", "CALDAV_CALENDAR"],
         "file": "~/.agents/calendar.json",
     }
 
@@ -72,12 +72,14 @@ def build_parser() -> argparse.ArgumentParser:
     sync_p.add_argument("--init", action="store_true", help="Perform initial host IDE registration")
 
     list_p = sub.add_parser("list", help="List events in a time range")
+    list_p.add_argument("--calendar", "-c", default="", help="Calendar collection name or URL")
     list_p.add_argument("--from", dest="start", default="")
     list_p.add_argument("--to", dest="end", default="")
     list_p.add_argument("start_pos", nargs="?", default="")
     list_p.add_argument("end_pos", nargs="?", default="")
 
     add_p = sub.add_parser("add", help="Create an event")
+    add_p.add_argument("--calendar", "-c", default="", help="Calendar collection name or URL")
     add_p.add_argument("--summary", default="")
     add_p.add_argument("--dtstart", default="")
     add_p.add_argument("--dtend", default="")
@@ -115,11 +117,23 @@ def _client() -> CaldavClient:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.help_json:
         print(json.dumps(help_json(), indent=2))
         return 0
+    if args.command != "serve":
+        try:
+            from .updates import check_for_updates
+
+            check_for_updates("agents-calendar", __version__)
+        except Exception:
+            pass
     if args.command in ("init", "sync"):
         from .sync import main as sync_main
 
@@ -140,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
             if not start or not end:
                 print("list needs --from and --to (ISO)", file=sys.stderr)
                 return 2
-            _dump(_client().list_events(start, end))
+            _dump(_client().list_events(start, end, calendar=args.calendar or None))
             return 0
         if args.command == "add":
             summary = args.summary or args.summary_pos
@@ -154,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
                     summary=summary,
                     dtstart=dtstart,
                     dtend=dtend,
+                    calendar=args.calendar or None,
                     location=args.location,
                     description=args.description,
                 )

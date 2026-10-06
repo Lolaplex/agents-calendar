@@ -16,6 +16,7 @@ class Settings:
     url: str
     username: str
     password: str
+    calendar: str = ""
 
 
 def agents_home() -> Path:
@@ -51,6 +52,7 @@ def _map_json(data: object) -> dict[str, str]:
         "url": str(data.get("url") or "").strip(),
         "username": str(data.get("username") or "").strip(),
         "password": str(data.get("password") or "").strip(),
+        "calendar": str(data.get("calendar") or "").strip(),
     }
 
 
@@ -59,6 +61,7 @@ def _map_dotenv(data: dict[str, str]) -> dict[str, str]:
         "url": data.get("CALDAV_URL", "").strip(),
         "username": data.get("CALDAV_USERNAME", "").strip(),
         "password": data.get("CALDAV_PASSWORD", "").strip(),
+        "calendar": data.get("CALDAV_CALENDAR", "").strip(),
     }
 
 
@@ -87,6 +90,7 @@ def load_settings() -> Settings:
     url = os.environ.get("CALDAV_URL", "").strip() or file_vals.get("url", "")
     username = os.environ.get("CALDAV_USERNAME", "").strip() or file_vals.get("username", "")
     password = os.environ.get("CALDAV_PASSWORD", "").strip() or file_vals.get("password", "")
+    calendar = os.environ.get("CALDAV_CALENDAR", "").strip() or file_vals.get("calendar", "")
     missing = [
         name
         for name, val in (
@@ -98,4 +102,4 @@ def load_settings() -> Settings:
     ]
     if missing:
         raise ConfigError("Set " + ", ".join(missing) + f" or {creds_path()}")
-    return Settings(url=url, username=username, password=password)
+    return Settings(url=url, username=username, password=password, calendar=calendar)

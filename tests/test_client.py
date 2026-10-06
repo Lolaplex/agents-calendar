@@ -272,6 +272,102 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(row["href"].endswith("/calendars/user/default/pinned-uid.ics"))
         self.assertEqual([call[0] for call in transport.calls], ["PROPFIND", "PUT"])
 
+    def test_add_with_explicit_calendar(self) -> None:
+        home = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            "<d:response><d:href>/123/calendars/uni/</d:href><d:propstat><d:prop>"
+            "<d:displayname>Uni</d:displayname>"
+            "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>"
+            '<c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>'
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "<d:response><d:href>/123/calendars/work/</d:href><d:propstat><d:prop>"
+            "<d:displayname>Work</d:displayname>"
+            "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>"
+            '<c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>'
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "<d:response><d:href>/123/calendars/reminders/</d:href><d:propstat><d:prop>"
+            "<d:displayname>Erinnerungen</d:displayname>"
+            "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>"
+            '<c:supported-calendar-component-set><c:comp name="VTODO"/></c:supported-calendar-component-set>'
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "</d:multistatus>"
+        ).encode("utf-8")
+        wellknown = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            "<d:response><d:href>/.well-known/caldav</d:href><d:propstat><d:prop>"
+            "<d:current-user-principal><d:href>/123/principal/</d:href></d:current-user-principal>"
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "</d:multistatus>"
+        ).encode("utf-8")
+        principal = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            "<d:response><d:href>/123/principal/</d:href><d:propstat><d:prop>"
+            "<c:calendar-home-set><d:href>/123/calendars/</d:href></c:calendar-home-set>"
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "</d:multistatus>"
+        ).encode("utf-8")
+        transport = FakeTransport()
+        transport.add("PROPFIND", "https://caldav.example/", 400, b"")
+        transport.add("PROPFIND", ".well-known/caldav", 207, wellknown)
+        transport.add("PROPFIND", "/123/principal/", 207, principal)
+        transport.add("PROPFIND", "/123/calendars/", 207, home)
+        client = CaldavClient(
+            Settings(url="https://caldav.example", username="user", password="secret"),
+            transport=transport,
+        )
+
+        # By default without target or settings.calendar, picks first vevent (uni)
+        row1 = client.add_event(
+            summary="Lecture",
+            dtstart="2026-09-14T08:00:00Z",
+            dtend="2026-09-14T10:00:00Z",
+            uid="uni-uid",
+        )
+        self.assertTrue(row1["href"].endswith("/123/calendars/uni/uni-uid.ics"))
+
+        # Explicit --calendar Work picks Work
+        row2 = client.add_event(
+            summary="Meeting",
+            dtstart="2026-09-14T11:00:00Z",
+            dtend="2026-09-14T12:00:00Z",
+            calendar="Work",
+            uid="work-uid",
+        )
+        self.assertTrue(row2["href"].endswith("/123/calendars/work/work-uid.ics"))
+
+        # Match by slug
+        row3 = client.add_event(
+            summary="Work Task",
+            dtstart="2026-09-14T13:00:00Z",
+            dtend="2026-09-14T14:00:00Z",
+            calendar="work",
+            uid="work-slug-uid",
+        )
+        self.assertTrue(row3["href"].endswith("/123/calendars/work/work-slug-uid.ics"))
+
+        # Error if calendar not found
+        with self.assertRaises(CaldavError) as ctx:
+            client.add_event(
+                summary="Ghost",
+                dtstart="2026-09-14T13:00:00Z",
+                dtend="2026-09-14T14:00:00Z",
+                calendar="NonExistent",
+            )
+        self.assertIn("not found", str(ctx.exception))
+
+        # Error if calendar only supports VTODO
+        with self.assertRaises(CaldavError) as ctx2:
+            client.add_event(
+                summary="TodoAsEvent",
+                dtstart="2026-09-14T13:00:00Z",
+                dtend="2026-09-14T14:00:00Z",
+                calendar="Erinnerungen",
+            )
+        self.assertIn("does not support VEVENT", str(ctx2.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
