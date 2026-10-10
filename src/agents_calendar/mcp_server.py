@@ -41,10 +41,29 @@ def calendar_calendars() -> str:
 
 
 @mcp.tool()
-def calendar_list(start: str, end: str, calendar: str = "") -> str:
-    """List VEVENTs between ISO start and end. Server expands recurrence."""
+def calendar_list(start: str, end: str, calendar: str = "", timezone: str = "") -> str:
+    """List VEVENTs between ISO start and end. Server expands recurrence.
+
+    start and end accept ISO datetimes or date strings. Naive datetimes are localized
+    using timezone (default: configured CALDAV_TIMEZONE or Europe/Berlin).
+    Each returned event contains both dtstart/dtend in UTC and dtstart_local/dtend_local
+    with timezone offset, plus the calendar collection name.
+    """
     try:
-        return _ok(_client().list_events(start, end, calendar=calendar or None))
+        return _ok(
+            _client().list_events(
+                start, end, calendar=calendar or None, timezone=timezone or None
+            )
+        )
+    except (ConfigError, CaldavError, IcsError, ValueError) as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def calendar_get(href: str, timezone: str = "") -> str:
+    """Get a single VEVENT by its href. Returns event details with both UTC and local times."""
+    try:
+        return _ok(_client().get_event(href, timezone=timezone or None))
     except (ConfigError, CaldavError, IcsError, ValueError) as exc:
         return _err(exc)
 
@@ -57,8 +76,18 @@ def calendar_add(
     calendar: str = "",
     location: str = "",
     description: str = "",
+    timezone: str = "",
+    all_day: bool = False,
+    status: str = "",
 ) -> str:
-    """Create a VEVENT. Uses If-None-Match so existing UIDs are not overwritten."""
+    """Create a VEVENT (If-None-Match: *).
+
+    dtstart and dtend accept ISO datetimes (e.g. '2026-11-29T16:00:00' or '2026-11-29 16:00').
+    Naive datetimes are deterministically localized in timezone (default: configured
+    CALDAV_TIMEZONE or Europe/Berlin) and converted to UTC, correctly handling summer/winter
+    daylight saving time (DST) shifts. Set all_day=True or pass date strings (e.g. '2026-11-29')
+    for all-day events.
+    """
     try:
         return _ok(
             _client().add_event(
@@ -68,6 +97,9 @@ def calendar_add(
                 calendar=calendar or None,
                 location=location,
                 description=description,
+                timezone=timezone or None,
+                all_day=all_day,
+                status=status,
             )
         )
     except (ConfigError, CaldavError, PreconditionFailed, IcsError, ValueError) as exc:
@@ -83,8 +115,14 @@ def calendar_update(
     dtend: str = "",
     location: str = "",
     description: str = "",
+    timezone: str = "",
+    all_day: bool | None = None,
+    status: str = "",
 ) -> str:
-    """Update a VEVENT. href and etag come from calendar_list. If-Match is required."""
+    """Update a VEVENT. href and etag come from calendar_list or calendar_get. If-Match is required.
+
+    Empty strings leave that field unchanged. Naive dtstart/dtend are localized in timezone.
+    """
     try:
         return _ok(
             _client().update_event(
@@ -95,6 +133,9 @@ def calendar_update(
                 dtend=dtend or None,
                 location=location or None,
                 description=description or None,
+                timezone=timezone or None,
+                all_day=all_day,
+                status=status or None,
             )
         )
     except (ConfigError, CaldavError, PreconditionFailed, IcsError, ValueError) as exc:
@@ -103,7 +144,7 @@ def calendar_update(
 
 @mcp.tool()
 def calendar_delete(href: str, etag: str) -> str:
-    """Delete a VEVENT. href and etag come from calendar_list. If-Match is required."""
+    """Delete a VEVENT. href and etag come from calendar_list or calendar_get. If-Match is required."""
     try:
         return _ok(_client().delete_event(href, etag))
     except (ConfigError, CaldavError, PreconditionFailed, IcsError, ValueError) as exc:

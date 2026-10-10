@@ -22,15 +22,19 @@ def help_json() -> dict[str, Any]:
                 "description": "List calendar collections under CALDAV_URL.",
             },
             "list": {
-                "usage": "agents-calendar list [--calendar NAME] --from ISO --to ISO",
+                "usage": "agents-calendar list [--calendar NAME] --from ISO --to ISO [--timezone TZ]",
                 "description": "List VEVENTs in the time range. Server expands recurrence.",
             },
+            "get": {
+                "usage": "agents-calendar get --href HREF [--timezone TZ]",
+                "description": "Get a VEVENT by href with local and UTC times.",
+            },
             "add": {
-                "usage": "agents-calendar add [--calendar NAME] --summary TEXT --dtstart ISO --dtend ISO [--location TEXT] [--description TEXT]",
+                "usage": "agents-calendar add [--calendar NAME] --summary TEXT --dtstart ISO --dtend ISO [--location TEXT] [--description TEXT] [--timezone TZ] [--all-day]",
                 "description": "Create a VEVENT (If-None-Match: *).",
             },
             "update": {
-                "usage": "agents-calendar update --href HREF --etag ETAG [--summary TEXT] [--dtstart ISO] [--dtend ISO] [--location TEXT] [--description TEXT]",
+                "usage": "agents-calendar update --href HREF --etag ETAG [--summary TEXT] [--dtstart ISO] [--dtend ISO] [--location TEXT] [--description TEXT] [--timezone TZ]",
                 "description": "Replace a VEVENT (If-Match etag).",
             },
             "delete": {
@@ -51,7 +55,7 @@ def help_json() -> dict[str, Any]:
             },
         },
         "flags": ["--help-json"],
-        "env": ["CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD", "CALDAV_CALENDAR"],
+        "env": ["CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD", "CALDAV_CALENDAR", "CALDAV_TIMEZONE"],
         "file": "~/.agents/calendar.json",
     }
 
@@ -75,8 +79,14 @@ def build_parser() -> argparse.ArgumentParser:
     list_p.add_argument("--calendar", "-c", default="", help="Calendar collection name or URL")
     list_p.add_argument("--from", dest="start", default="")
     list_p.add_argument("--to", dest="end", default="")
+    list_p.add_argument("--timezone", default="", help="Timezone name for query and local time display")
     list_p.add_argument("start_pos", nargs="?", default="")
     list_p.add_argument("end_pos", nargs="?", default="")
+
+    get_p = sub.add_parser("get", help="Get an event by href")
+    get_p.add_argument("--href", default="")
+    get_p.add_argument("--timezone", default="")
+    get_p.add_argument("href_pos", nargs="?", default="")
 
     add_p = sub.add_parser("add", help="Create an event")
     add_p.add_argument("--calendar", "-c", default="", help="Calendar collection name or URL")
@@ -85,6 +95,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_p.add_argument("--dtend", default="")
     add_p.add_argument("--location", default="")
     add_p.add_argument("--description", default="")
+    add_p.add_argument("--timezone", default="", help="Timezone name for interpreting naive dtstart/dtend")
+    add_p.add_argument("--all-day", action="store_true", help="Mark as an all-day event")
+    add_p.add_argument("--status", default="", help="Status (e.g. CONFIRMED, TENTATIVE)")
     add_p.add_argument("summary_pos", nargs="?", default="")
     add_p.add_argument("dtstart_pos", nargs="?", default="")
     add_p.add_argument("dtend_pos", nargs="?", default="")
@@ -97,6 +110,8 @@ def build_parser() -> argparse.ArgumentParser:
     upd_p.add_argument("--dtend", default="")
     upd_p.add_argument("--location", default=None)
     upd_p.add_argument("--description", default=None)
+    upd_p.add_argument("--timezone", default="")
+    upd_p.add_argument("--status", default="")
     upd_p.add_argument("href_pos", nargs="?", default="")
     upd_p.add_argument("etag_pos", nargs="?", default="")
 
@@ -154,7 +169,18 @@ def main(argv: list[str] | None = None) -> int:
             if not start or not end:
                 print("list needs --from and --to (ISO)", file=sys.stderr)
                 return 2
-            _dump(_client().list_events(start, end, calendar=args.calendar or None))
+            _dump(
+                _client().list_events(
+                    start, end, calendar=args.calendar or None, timezone=args.timezone or None
+                )
+            )
+            return 0
+        if args.command == "get":
+            href = args.href or args.href_pos
+            if not href:
+                print("get needs --href", file=sys.stderr)
+                return 2
+            _dump(_client().get_event(href, timezone=args.timezone or None))
             return 0
         if args.command == "add":
             summary = args.summary or args.summary_pos
@@ -171,6 +197,9 @@ def main(argv: list[str] | None = None) -> int:
                     calendar=args.calendar or None,
                     location=args.location,
                     description=args.description,
+                    timezone=args.timezone or None,
+                    all_day=args.all_day,
+                    status=args.status,
                 )
             )
             return 0
@@ -189,6 +218,8 @@ def main(argv: list[str] | None = None) -> int:
                     dtend=args.dtend or None,
                     location=args.location,
                     description=args.description,
+                    timezone=args.timezone or None,
+                    status=args.status or None,
                 )
             )
             return 0

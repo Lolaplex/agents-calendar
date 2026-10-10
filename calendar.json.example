@@ -2,5 +2,6 @@
   "url": "https://example/dav/calendars/user/calendar/",
   "username": "user",
   "password": "app-password",
-  "calendar": "Work"
+  "calendar": "Work",
+  "timezone": "Europe/Berlin"
 }
