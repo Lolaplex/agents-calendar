@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-10
+
+### Added
+- Fully timezone and daylight saving time (DST / Zeitumstellung) sensitive handling using Python standard library `zoneinfo`.
+- Naive datetime inputs (e.g. `2026-11-29T16:00:00`) are deterministically localized in `CALDAV_TIMEZONE` (or auto-detected system timezone, e.g. `Europe/Berlin`) and converted to UTC (`2026-11-29T15:00:00Z`).
+- Rich event return fields across all endpoints (`calendar_list`, `calendar_get`, `calendar_add`, `calendar_update`): `dtstart` (UTC), `dtstart_local` (with timezone offset), `dtend`, `dtend_local`, `timezone`, `all_day`, and `calendar`.
+- `calendar_get` MCP tool and `agents-calendar get` CLI command to retrieve single events by href.
+- Property parameter parsing for `DTSTART;TZID=...` and `DTSTART;VALUE=DATE:...` in iCalendar payloads.
+- `all_day` support for full-day events.
+
 ## [0.1.0] - 2026-10-06
 
 ### Added
@@ -46,7 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Discover `calendar-home-set` when `CALDAV_URL` is a host or principal (iCloud) and query each calendar.
 - Parse all-day iCalendar DATE values (`YYYYMMDD`) as UTC midnight.
 
-[Unreleased]: https://github.com/Lolaplex/agents-calendar/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Lolaplex/agents-calendar/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Lolaplex/agents-calendar/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.3...v0.1.0
 [0.0.3]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.1...v0.0.2
