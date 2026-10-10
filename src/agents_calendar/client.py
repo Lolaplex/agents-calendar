@@ -240,9 +240,9 @@ class CaldavClient:
             raise CaldavError(f"CalDAV PROPFIND {status}")
         return self._parse_calendars(payload, home)
 
-    def _query_body(self, start: str, end: str) -> bytes:
-        start_c = ics.to_caldav_utc(start)
-        end_c = ics.to_caldav_utc(end)
+    def _query_body(self, start: str, end: str, tz: str | None = None) -> bytes:
+        start_c = ics.to_caldav_utc(start, default_tz=tz)
+        end_c = ics.to_caldav_utc(end, default_tz=tz)
         return (
             '<?xml version="1.0" encoding="utf-8"?>'
             f'<c:calendar-query xmlns:d="{DAV}" xmlns:c="{CALDAV}">'
@@ -254,19 +254,25 @@ class CaldavClient:
             "</c:calendar-query>"
         ).encode("utf-8")
 
-    def _events_from(self, payload: bytes) -> list[dict[str, Any]]:
+    def _events_from(
+        self, payload: bytes, calendar_name: str = "", tz: str | None = None
+    ) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
         for href, etag, node in self._responses(payload):
             data = _child_text(node, CALDAV, "calendar-data")
             if not data:
                 continue
-            parsed = ics.parse_vevent(data)
+            parsed = ics.parse_vevent(data, tz=tz)
             parsed["href"] = href
             parsed["etag"] = etag
+            if calendar_name:
+                parsed["calendar"] = calendar_name
             events.append(parsed)
         return events
 
-    def _report(self, url: str, body: bytes) -> tuple[int, list[dict[str, Any]]]:
+    def _report(
+        self, url: str, body: bytes, calendar_name: str = "", tz: str | None = None
+    ) -> tuple[int, list[dict[str, Any]]]:
         status, _hdrs, payload = self._call(
             "REPORT",
             url,
@@ -275,30 +281,61 @@ class CaldavClient:
         )
         if status >= 400:
             return status, []
-        return status, self._events_from(payload)
+        return status, self._events_from(payload, calendar_name=calendar_name, tz=tz)
 
-    def list_events(self, start: str, end: str, calendar: str | None = None) -> list[dict[str, Any]]:
-        body = self._query_body(start, end)
+    def _calendar_name(self, target: str | None) -> str:
+        if not target:
+            return ""
+        try:
+            for row in self.calendars():
+                if (row.get("displayname") or "").strip().lower() == target.strip().lower():
+                    return str(row.get("displayname"))
+                if str(row.get("href") or "").rstrip("/").endswith(target.strip("/").lower()):
+                    return str(row.get("displayname") or target)
+        except Exception:
+            pass
+        return target
+
+    def _calendar_name_from_href(self, href: str) -> str:
+        parts = [p for p in href.split("/") if p]
+        return parts[-1] if parts else ""
+
+    def list_events(
+        self,
+        start: str,
+        end: str,
+        calendar: str | None = None,
+        timezone: str | None = None,
+    ) -> list[dict[str, Any]]:
+        target_tz = timezone or self.settings.timezone or None
+        body = self._query_body(start, end, tz=target_tz)
         if calendar:
             target_col = self._event_collection(calendar)
-            status, events = self._report(target_col, body)
+            cal_name = self._calendar_name(calendar) or calendar
+            status, events = self._report(target_col, body, calendar_name=cal_name, tz=target_tz)
             if status >= 400:
                 raise CaldavError(f"CalDAV REPORT {status}")
             events.sort(key=lambda row: str(row.get("dtstart") or ""))
             return events
-        status, events = self._report(self.base, body)
+        status, events = self._report(self.base, body, tz=target_tz)
         if status < 400:
             events.sort(key=lambda row: str(row.get("dtstart") or ""))
             return events
+
         events = []
         last_status = status
-        cals = self.calendars()
+        cals: list[dict[str, Any]] = []
+        try:
+            cals = self.calendars()
+        except CaldavError:
+            pass
         targets = [self.resolve_href(row["href"]) for row in cals]
         if not targets and self._home:
             targets = [self._home]
-        for target in targets:
+        for idx, target in enumerate(targets):
             url = target if target.endswith("/") else target + "/"
-            st, rows = self._report(url, body)
+            cal_name = cals[idx].get("displayname") or "" if idx < len(cals) else ""
+            st, rows = self._report(url, body, calendar_name=cal_name, tz=target_tz)
             last_status = st
             if st < 400:
                 events.extend(rows)
@@ -380,7 +417,11 @@ class CaldavClient:
         location: str = "",
         description: str = "",
         uid: str | None = None,
+        timezone: str | None = None,
+        all_day: bool = False,
+        status: str = "",
     ) -> dict[str, Any]:
+        target_tz = timezone or self.settings.timezone or None
         event_uid = uid or ics.new_uid()
         payload = ics.emit_vevent(
             uid=event_uid,
@@ -389,9 +430,14 @@ class CaldavClient:
             dtend=dtend,
             location=location,
             description=description,
+            timezone=target_tz,
+            all_day=all_day,
+            status=status,
         )
-        href = urljoin(self._event_collection(calendar), f"{event_uid}.ics")
-        status, hdrs, _body = self.request(
+        cal_col = self._event_collection(calendar)
+        cal_name = self._calendar_name(calendar) if calendar else self._calendar_name_from_href(cal_col)
+        href = urljoin(cal_col, f"{event_uid}.ics")
+        status_code, hdrs, _body = self.request(
             "PUT",
             href,
             payload.encode("utf-8"),
@@ -400,23 +446,31 @@ class CaldavClient:
                 "If-None-Match": "*",
             },
         )
-        if status not in (200, 201, 204):
-            raise CaldavError(f"CalDAV PUT {status}")
-        return {
-            "href": href,
-            "etag": hdrs.get("etag", ""),
-            "uid": event_uid,
-            "summary": summary,
-            "dtstart": ics.to_iso_z(ics.parse_iso(dtstart)),
-            "dtend": ics.to_iso_z(ics.parse_iso(dtend)),
-            "location": location,
-            "description": description,
-        }
+        if status_code not in (200, 201, 204):
+            raise CaldavError(f"CalDAV PUT {status_code}")
+        parsed = ics.parse_vevent(payload, tz=target_tz)
+        parsed["href"] = href
+        parsed["etag"] = hdrs.get("etag", "")
+        if cal_name:
+            parsed["calendar"] = cal_name
+        return parsed
 
-    def get_event(self, href: str) -> tuple[str, str]:
+    def get_event_raw(self, href: str) -> tuple[str, str]:
         url = self.resolve_href(href)
         _status, hdrs, payload = self.request("GET", url)
         return hdrs.get("etag", ""), payload.decode("utf-8")
+
+    def get_event(self, href: str, timezone: str | None = None) -> dict[str, Any]:
+        target_tz = timezone or self.settings.timezone or None
+        etag, raw = self.get_event_raw(href)
+        parsed = ics.parse_vevent(raw, tz=target_tz)
+        resolved_href = self.resolve_href(href)
+        parsed["href"] = resolved_href
+        parsed["etag"] = etag
+        cal_slug = urlparse(resolved_href).path.rsplit("/", 2)[-2]
+        if cal_slug:
+            parsed["calendar"] = self._calendar_name(cal_slug) or cal_slug
+        return parsed
 
     def update_event(
         self,
@@ -428,11 +482,15 @@ class CaldavClient:
         dtend: str | None = None,
         location: str | None = None,
         description: str | None = None,
+        timezone: str | None = None,
+        all_day: bool | None = None,
+        status: str | None = None,
     ) -> dict[str, Any]:
         if not etag.strip():
             raise CaldavError("etag required for update")
+        target_tz = timezone or self.settings.timezone or None
         url = self.resolve_href(href)
-        _old_etag, raw = self.get_event(href)
+        _old_etag, raw = self.get_event_raw(href)
         patched = ics.patch_vevent(
             raw,
             summary=summary,
@@ -440,8 +498,11 @@ class CaldavClient:
             dtend=dtend,
             location=location,
             description=description,
+            timezone=target_tz,
+            all_day=all_day,
+            status=status,
         )
-        status, hdrs, _body = self.request(
+        status_code, hdrs, _body = self.request(
             "PUT",
             url,
             patched.encode("utf-8"),
@@ -450,11 +511,14 @@ class CaldavClient:
                 "If-Match": etag,
             },
         )
-        if status not in (200, 201, 204):
-            raise CaldavError(f"CalDAV PUT {status}")
-        parsed = ics.parse_vevent(patched)
+        if status_code not in (200, 201, 204):
+            raise CaldavError(f"CalDAV PUT {status_code}")
+        parsed = ics.parse_vevent(patched, tz=target_tz)
         parsed["href"] = href
         parsed["etag"] = hdrs.get("etag", "")
+        cal_slug = urlparse(url).path.rsplit("/", 2)[-2]
+        if cal_slug:
+            parsed["calendar"] = self._calendar_name(cal_slug) or cal_slug
         return parsed
 
     def delete_event(self, href: str, etag: str) -> dict[str, str]:

@@ -1,7 +1,7 @@
 <h1 align="center">agents-calendar</h1>
 
 <p align="center">
-  <a href="https://github.com/Lolaplex/agents-calendar/releases"><img src="https://img.shields.io/badge/version-0.1.0-blue.svg?style=flat-square" alt="Version 0.1.0"></a>
+  <a href="https://github.com/Lolaplex/agents-calendar/releases"><img src="https://img.shields.io/badge/version-0.1.1-blue.svg?style=flat-square" alt="Version 0.1.1"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Standard-orange.svg?style=flat-square" alt="MCP"></a>
   <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+"></a>
   <a href="https://pypi.org/project/agents-calendar/"><img src="https://img.shields.io/pypi/v/agents-calendar.svg?style=flat-square" alt="PyPI"></a>
@@ -80,12 +80,13 @@ Primary surface. They mirror the CLI. Password never appears in the JSON.
 | Tool | What it does |
 | :--- | :--- |
 | `calendar_calendars` | Collections under the configured URL |
-| `calendar_list` | VEVENTs between ISO `start` and `end`. Server expands recurrence |
+| `calendar_list` | VEVENTs between ISO `start` and `end`. Returns UTC and local times |
+| `calendar_get` | Get a single VEVENT by `href` with UTC and local times |
 | `calendar_add` | Create. `If-None-Match` so an existing UID is not overwritten |
-| `calendar_update` | Replace. `href` and `etag` come from `calendar_list` |
+| `calendar_update` | Replace. `href` and `etag` come from `calendar_list` or `calendar_get` |
 | `calendar_delete` | Delete. Same `href` + `etag` pair |
 
-Five tools.
+Six tools. Timezone and daylight saving time (DST) shifts are handled deterministically via Python `zoneinfo`.
 
 ---
 
@@ -97,8 +98,9 @@ Machine-readable catalog: `python -m agents_calendar --help-json` (do not scrape
 | --- | --- |
 | `agents-calendar sync --init` | Merge MCP. Alias: `agents-calendar init` |
 | `agents-calendar calendars` | List collections |
-| `agents-calendar list --from <ISO> --to <ISO>` | Events in that range |
-| `agents-calendar add --summary "…" --dtstart <ISO> --dtend <ISO>` | Create. Optional `--location`, `--description` |
+| `agents-calendar list --from <ISO> --to <ISO>` | Events in that range with local & UTC times |
+| `agents-calendar get --href <href>` | Get event details by href |
+| `agents-calendar add --summary "…" --dtstart <ISO> --dtend <ISO>` | Create. Optional `--location`, `--description`, `--timezone`, `--all-day` |
 | `agents-calendar update --href <href> --etag <etag> …` | Replace fields you pass |
 | `agents-calendar delete --href <href> --etag <etag>` | Delete |
 | `agents-calendar serve` | stdio MCP. Not the default |

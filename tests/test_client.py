@@ -368,6 +368,42 @@ class ClientTests(unittest.TestCase):
             )
         self.assertIn("does not support VEVENT", str(ctx2.exception))
 
+    def test_add_and_get_event_with_timezone(self) -> None:
+        transport = FakeTransport()
+        client = CaldavClient(_settings(), transport=transport)
+        created = client.add_event(
+            summary="Aushilfe (So)",
+            dtstart="2026-11-29T16:00:00",
+            dtend="2026-11-29T21:00:00",
+            timezone="Europe/Berlin",
+            uid="shift-uid",
+        )
+        self.assertEqual(created["dtstart"], "2026-11-29T15:00:00Z")
+        self.assertEqual(created["dtend"], "2026-11-29T20:00:00Z")
+        self.assertEqual(created["dtstart_local"], "2026-11-29T16:00:00+01:00")
+        self.assertEqual(created["dtend_local"], "2026-11-29T21:00:00+01:00")
+        self.assertEqual(created["timezone"], "Europe/Berlin")
+
+        fetched = client.get_event(created["href"], timezone="Europe/Berlin")
+        self.assertEqual(fetched["summary"], "Aushilfe (So)")
+        self.assertEqual(fetched["dtstart"], "2026-11-29T15:00:00Z")
+        self.assertEqual(fetched["dtstart_local"], "2026-11-29T16:00:00+01:00")
+        self.assertEqual(fetched["dtend_local"], "2026-11-29T21:00:00+01:00")
+
+    def test_all_day_event(self) -> None:
+        transport = FakeTransport()
+        client = CaldavClient(_settings(), transport=transport)
+        created = client.add_event(
+            summary="Standleitung",
+            dtstart="2026-11-29",
+            dtend="2026-11-30",
+            all_day=True,
+            uid="allday-uid",
+        )
+        self.assertTrue(created["all_day"])
+        self.assertEqual(created["dtstart_local"], "2026-11-29")
+        self.assertEqual(created["dtend_local"], "2026-11-30")
+
 
 if __name__ == "__main__":
     unittest.main()
