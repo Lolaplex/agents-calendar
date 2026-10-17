@@ -13,6 +13,8 @@ authors = [{ name = "Lolaplex" }]
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0.0,<2",
+    # zoneinfo needs IANA data; Windows ships none
+    "tzdata; platform_system == 'Windows'",
 ]
 keywords = ["caldav", "calendar", "mcp", "agents", "cli"]
 classifiers = [
