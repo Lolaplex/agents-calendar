@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-21
+
+### Fixed
+- Declare `tzdata; sys_platform == 'win32'` as a package dependency so Python's standard library `zoneinfo` has the IANA time zone database available on Windows installations where OS-level tzdata is absent.
+
 ## [0.1.1] - 2026-10-10
 
 ### Added
