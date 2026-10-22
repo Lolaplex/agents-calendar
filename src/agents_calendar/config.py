@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 
@@ -47,37 +48,49 @@ def _parse_dotenv(text: str) -> dict[str, str]:
     return out
 
 
-def detect_system_timezone() -> str:
-    for env_var in ("CALDAV_TIMEZONE", "AGENTS_TIMEZONE", "TZ"):
-        val = os.environ.get(env_var, "").strip()
-        if val:
-            return val
-    if sys.platform == "win32":
-        try:
-            import winreg
+def _valid_zone_name(name: str) -> str:
+    raw = name.strip()
+    if not raw:
+        return ""
+    try:
+        from zoneinfo import ZoneInfo
 
-            key = winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE,
-                r"SYSTEM\CurrentControlSet\Control\TimeZoneInformation",
-            )
-            name, _ = winreg.QueryValueEx(key, "TimeZoneKeyName")
-            win_map = {
-                "W. Europe Standard Time": "Europe/Berlin",
-                "Central Europe Standard Time": "Europe/Warsaw",
-                "Romance Standard Time": "Europe/Paris",
-                "GMT Standard Time": "Europe/London",
-                "Greenwich Standard Time": "UTC",
-                "UTC": "UTC",
-                "Eastern Standard Time": "America/New_York",
-                "Central Standard Time": "America/Chicago",
-                "Mountain Standard Time": "America/Denver",
-                "Pacific Standard Time": "America/Los_Angeles",
-            }
-            if name in win_map:
-                return win_map[name]
-        except Exception:
-            pass
-    elif sys.platform.startswith("linux") or sys.platform == "darwin":
+        ZoneInfo(raw)
+    except Exception:
+        return ""
+    return raw
+
+
+def _windows_timezone_name() -> str:
+    try:
+        import winreg
+
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\TimeZoneInformation",
+        )
+        name, _ = winreg.QueryValueEx(key, "TimeZoneKeyName")
+    except Exception:
+        return ""
+    win_map = {
+        "W. Europe Standard Time": "Europe/Berlin",
+        "Central Europe Standard Time": "Europe/Warsaw",
+        "Romance Standard Time": "Europe/Paris",
+        "GMT Standard Time": "Europe/London",
+        "Greenwich Standard Time": "UTC",
+        "UTC": "UTC",
+        "Eastern Standard Time": "America/New_York",
+        "Central Standard Time": "America/Chicago",
+        "Mountain Standard Time": "America/Denver",
+        "Pacific Standard Time": "America/Los_Angeles",
+    }
+    return win_map.get(str(name), "")
+
+
+def _os_timezone_name() -> str:
+    if sys.platform == "win32":
+        return _windows_timezone_name()
+    if sys.platform.startswith("linux") or sys.platform == "darwin":
         try:
             tz_path = Path("/etc/timezone")
             if tz_path.is_file():
@@ -87,25 +100,68 @@ def detect_system_timezone() -> str:
             localtime = Path("/etc/localtime")
             if localtime.is_symlink():
                 target = str(localtime.resolve())
-                if "zoneinfo/" in target:
-                    return target.split("zoneinfo/", 1)[1]
+                marker = "zoneinfo/"
+                if marker in target:
+                    name = target.split(marker, 1)[1]
+                    for prefix in ("posix/", "right/"):
+                        if name.startswith(prefix):
+                            name = name[len(prefix) :]
+                    return name
         except Exception:
-            pass
-    return "Europe/Berlin"
+            return ""
+    return ""
 
 
-def get_default_timezone() -> str:
-    for env_var in ("CALDAV_TIMEZONE", "AGENTS_TIMEZONE", "TZ"):
+def detect_system_timezone() -> str:
+    """Host zone from ``TZ`` or the operating system. ``UTC`` when neither is usable."""
+    return system_timezone_name()
+
+
+def system_timezone_name() -> str:
+    """Process-local IANA zone. ``TZ`` wins, then the OS database, then ``UTC``."""
+    tz_env = _valid_zone_name(os.environ.get("TZ", ""))
+    if tz_env:
+        return tz_env
+    detected = _valid_zone_name(_os_timezone_name())
+    if detected:
+        return detected
+    try:
+        local = datetime.now().astimezone()
+    except Exception:
+        local = None
+    if local is not None:
+        key = getattr(local.tzinfo, "key", None)
+        if isinstance(key, str):
+            found = _valid_zone_name(key)
+            if found:
+                return found
+        offset = local.utcoffset()
+        if offset is not None and offset.total_seconds() == 0:
+            return "UTC"
+    return "UTC"
+
+
+def configured_timezone() -> str:
+    """Zone from the environment or the credentials file. Empty when unset.
+
+    ``CALDAV_TIMEZONE`` then ``AGENTS_TIMEZONE``, then ``timezone`` in
+    ``calendar.json`` or ``CALDAV_TIMEZONE`` in ``~/.agents/.env``. This does
+    not consult the host zone or a calendar's ``calendar-timezone`` property.
+    """
+    for env_var in ("CALDAV_TIMEZONE", "AGENTS_TIMEZONE"):
         val = os.environ.get(env_var, "").strip()
         if val:
             return val
     try:
         file_vals = _load_file()
-        if file_vals.get("timezone"):
-            return file_vals["timezone"]
     except Exception:
-        pass
-    return detect_system_timezone()
+        return ""
+    return file_vals.get("timezone", "").strip()
+
+
+def get_default_timezone() -> str:
+    """Configured zone, or the host zone when nothing is configured."""
+    return configured_timezone() or system_timezone_name()
 
 
 def _map_json(data: object) -> dict[str, str]:
@@ -156,11 +212,7 @@ def load_settings() -> Settings:
     username = os.environ.get("CALDAV_USERNAME", "").strip() or file_vals.get("username", "")
     password = os.environ.get("CALDAV_PASSWORD", "").strip() or file_vals.get("password", "")
     calendar = os.environ.get("CALDAV_CALENDAR", "").strip() or file_vals.get("calendar", "")
-    timezone = (
-        os.environ.get("CALDAV_TIMEZONE", "").strip()
-        or file_vals.get("timezone", "")
-        or detect_system_timezone()
-    )
+    timezone = configured_timezone()
     missing = [
         name
         for name, val in (

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Naive datetimes are wall times in the resolved IANA zone. A value such as `2026-10-22T10:00:00` is 10:00 in that zone, including the daylight-saving offset for that date. It is not a UTC timestamp and it is not stored as an all-day event.
+- Spring-forward gaps and fall-back overlaps are rejected unless the input carries an explicit UTC offset.
+- `TZID` on incoming events is honored. An IANA id uses `zoneinfo`. Any other id is resolved from the embedded `VTIMEZONE`. Floating times use the resolved zone. `Z` and numeric offsets stay absolute instants.
+- All-day events are read and written as `VALUE=DATE` with an exclusive `DTEND`. Returned `dtstart` / `dtend` are civil dates and `all_day` is true.
+- Updates keep unrelated properties (`RRULE`, `EXDATE`, `RDATE`, `VALARM`, `ATTENDEE`, `UID`, `X-` properties), bump `SEQUENCE`, and refresh `DTSTAMP` and `LAST-MODIFIED`.
+
+### Added
+- Timed events are written with `DTSTART`/`DTEND;TZID=<zone>` and a `VTIMEZONE` derived from the IANA time zone database. Weekly recurrence expanded by the CalDAV server therefore stays on the same wall clock across DST. An ambiguous wall time is stored as UTC so the fall-back instant is not lost.
+- Zone resolution order: explicit argument, then `CALDAV_TIMEZONE` (or `timezone` in the credentials file), then the collection's CalDAV `calendar-timezone` when its id is an IANA name, then the host zone (`TZ` or the OS database), then `UTC`.
+- `tzdata` is a dependency on every platform so `zoneinfo` has IANA data when the operating system does not.
+
+### Changed
+- All-day `dtstart` / `dtend` / `dtstart_local` / `dtend_local` are `YYYY-MM-DD` dates. They are no longer UTC midnight timestamps.
+- A date-only time-range bound is 00:00 in the resolved zone, then converted to UTC.
+- There is no hard-coded regional default. When the host zone cannot be determined the fallback is `UTC`.
+- Changing only `dtstart` or only `dtend` keeps the other instant when the span stays positive. If that edit would reverse the span, the previous duration is kept.
+
 ## [0.1.2] - 2026-10-21
 
 ### Fixed
@@ -61,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Discover `calendar-home-set` when `CALDAV_URL` is a host or principal (iCloud) and query each calendar.
 - Parse all-day iCalendar DATE values (`YYYYMMDD`) as UTC midnight.
 
-[Unreleased]: https://github.com/Lolaplex/agents-calendar/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Lolaplex/agents-calendar/compare/v0.1.2...HEAD
 [0.1.1]: https://github.com/Lolaplex/agents-calendar/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.3...v0.1.0
 [0.0.3]: https://github.com/Lolaplex/agents-calendar/compare/v0.0.2...v0.0.3

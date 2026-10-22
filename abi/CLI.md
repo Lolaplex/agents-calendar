@@ -11,6 +11,8 @@ Installed command: `agents-calendar`. No subcommand prints help. It does not sta
 - `agents-calendar delete --href HREF --etag ETAG` — delete.
 - `agents-calendar serve` — FastMCP stdio.
 
+`--timezone` is an IANA name. Naive `--from`, `--to`, `--dtstart`, and `--dtend` values are wall times in the resolved zone (see `abi/MCP.md`). `Z` and numeric offsets are absolute. `--all-day`, or a date-only start and end, writes `VALUE=DATE` with an exclusive end. Exit 1 includes a spring-forward gap or a fall-back overlap that was sent without an offset.
+
 Exit 2: missing config or missing required flags. Exit 3: precondition failed (etag). Exit 1: other CalDAV or iCalendar error.
 
 `python -m agents_calendar --help-json` prints the machine catalog.

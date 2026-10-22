@@ -21,15 +21,30 @@ python -m agents_calendar serve
 
 ## Timezones & Deterministic DST
 
-- `agents-calendar` is fully timezone and DST (daylight saving time / Zeitumstellung) sensitive.
-- Naive datetime inputs (e.g. `2026-11-29T16:00:00`) are deterministically localized in `CALDAV_TIMEZONE` (or auto-detected system timezone, e.g. `Europe/Berlin`) using Python `zoneinfo` and converted to UTC (`2026-11-29T15:00:00Z`).
+`zoneinfo` (IANA tz database; the `tzdata` package supplies it when the OS does not). No hand-rolled offsets.
+
+Resolution order for the zone that interprets naive input and formats local output:
+
+1. Explicit `timezone` argument (CLI `--timezone`, MCP `timezone`).
+2. Configured zone: `CALDAV_TIMEZONE`, else `AGENTS_TIMEZONE`, else `timezone` in `calendar.json` / `CALDAV_TIMEZONE` in `~/.agents/.env`.
+3. The collection's CalDAV `calendar-timezone` (or `calendar-timezone-id`) when that id is an IANA name.
+4. Host zone: `TZ`, else the OS zone database.
+5. `UTC` when the host zone cannot be determined.
+
+- Naive input (`2026-11-29T16:00:00`, `2026-11-29 16:00`, `20261129T160000`) is wall time in that zone. The offset is the IANA offset for that date, so DST transitions are per date.
+- `Z` or a numeric offset is an absolute instant and is kept. A fall-back overlap stored with `TZID` cannot tell the two instants apart, so those instants are written as UTC.
+- Spring-forward gaps and fall-back overlaps without an explicit offset raise `IcsError`. Do not guess.
+- Timed writes use `DTSTART`/`DTEND;TZID=<zone>` plus a `VTIMEZONE` built from the IANA data. The server expands `RRULE` in that zone, so a weekly wall time stays put across DST. This package still does not parse `RRULE`.
+- All-day values (`all_day` or `YYYY-MM-DD`) are `VALUE=DATE`. `DTEND` is exclusive. The same date for start and end means one civil day.
+- Read path: IANA `TZID` via `zoneinfo`; any other `TZID` via `VTIMEZONE`; `Z` / numeric offsets as instants; floating times in the resolved zone; `VALUE=DATE` as all-day.
 - Returned event dictionaries from `list_events`, `get_event`, `add_event`, and `update_event` include:
-  - `dtstart`: UTC ISO timestamp
-  - `dtstart_local`: local ISO timestamp with timezone offset (e.g. `2026-11-29T16:00:00+01:00`) or date
-  - `dtend` and `dtend_local`
-  - `timezone`: target timezone name
+  - `dtstart`: UTC ISO timestamp, or `YYYY-MM-DD` when `all_day`
+  - `dtstart_local`: local ISO timestamp with a numeric offset (e.g. `2026-11-29T16:00:00+01:00`), or the civil date when `all_day`
+  - `dtend` and `dtend_local` (all-day `dtend` is the exclusive date)
+  - `timezone`: IANA name used for the local fields
   - `all_day`: boolean
   - `calendar`: calendar collection name
+- Updates preserve `RRULE`, `EXDATE`, `RDATE`, `VALARM`, `ATTENDEE`, `UID`, and `X-` properties. `SEQUENCE` increments. `DTSTAMP` and `LAST-MODIFIED` are refreshed. Changing only one of `dtstart` / `dtend` keeps the other instant when the span stays positive; if the edit would reverse the span, the previous duration is kept.
 
 ## Credentials & Config
 

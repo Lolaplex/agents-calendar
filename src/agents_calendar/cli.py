@@ -23,7 +23,7 @@ def help_json() -> dict[str, Any]:
             },
             "list": {
                 "usage": "agents-calendar list [--calendar NAME] --from ISO --to ISO [--timezone TZ]",
-                "description": "List VEVENTs in the time range. Server expands recurrence.",
+                "description": "List VEVENTs in the time range. Naive bounds are wall times in the resolved IANA zone. The server expands recurrence.",
             },
             "get": {
                 "usage": "agents-calendar get --href HREF [--timezone TZ]",
@@ -31,11 +31,11 @@ def help_json() -> dict[str, Any]:
             },
             "add": {
                 "usage": "agents-calendar add [--calendar NAME] --summary TEXT --dtstart ISO --dtend ISO [--location TEXT] [--description TEXT] [--timezone TZ] [--all-day]",
-                "description": "Create a VEVENT (If-None-Match: *).",
+                "description": "Create a VEVENT (If-None-Match: *). Naive dtstart/dtend are wall times in the resolved IANA zone. Z and numeric offsets are absolute. --all-day or dates write VALUE=DATE with an exclusive DTEND.",
             },
             "update": {
                 "usage": "agents-calendar update --href HREF --etag ETAG [--summary TEXT] [--dtstart ISO] [--dtend ISO] [--location TEXT] [--description TEXT] [--timezone TZ]",
-                "description": "Replace a VEVENT (If-Match etag).",
+                "description": "Replace fields you pass (If-Match etag). RRULE, VALARM, and other omitted properties are kept. SEQUENCE increments.",
             },
             "delete": {
                 "usage": "agents-calendar delete --href HREF --etag ETAG",
@@ -79,7 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
     list_p.add_argument("--calendar", "-c", default="", help="Calendar collection name or URL")
     list_p.add_argument("--from", dest="start", default="")
     list_p.add_argument("--to", dest="end", default="")
-    list_p.add_argument("--timezone", default="", help="Timezone name for query and local time display")
+    list_p.add_argument(
+        "--timezone",
+        default="",
+        help="IANA zone for naive bounds and local output. Default: CALDAV_TIMEZONE, calendar-timezone, host zone, UTC",
+    )
     list_p.add_argument("start_pos", nargs="?", default="")
     list_p.add_argument("end_pos", nargs="?", default="")
 
@@ -95,7 +99,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_p.add_argument("--dtend", default="")
     add_p.add_argument("--location", default="")
     add_p.add_argument("--description", default="")
-    add_p.add_argument("--timezone", default="", help="Timezone name for interpreting naive dtstart/dtend")
+    add_p.add_argument(
+        "--timezone",
+        default="",
+        help="IANA zone for naive wall times. Z and numeric offsets stay absolute",
+    )
     add_p.add_argument("--all-day", action="store_true", help="Mark as an all-day event")
     add_p.add_argument("--status", default="", help="Status (e.g. CONFIRMED, TENTATIVE)")
     add_p.add_argument("summary_pos", nargs="?", default="")
