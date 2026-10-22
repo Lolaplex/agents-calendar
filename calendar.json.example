@@ -3,5 +3,5 @@
   "username": "user",
   "password": "app-password",
   "calendar": "Work",
-  "timezone": "Europe/Berlin"
+  "timezone": "UTC"
 }

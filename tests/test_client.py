@@ -73,8 +73,9 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(rows[0]["summary"], "Exam")
         self.assertEqual(rows[0]["etag"], '"etag-1"')
         self.assertIn("exam.ics", rows[0]["href"])
-        method, _url, body, _hdrs = transport.calls[0]
-        self.assertEqual(method, "REPORT")
+        reports = [call for call in transport.calls if call[0] == "REPORT"]
+        self.assertTrue(reports)
+        _method, _url, body, _hdrs = reports[0]
         self.assertIn(b"20260913T000000Z", body or b"")
 
     def test_calendars_skips_non_calendar(self) -> None:
@@ -177,7 +178,7 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["summary"], "Exam")
         methods = [call[0] for call in transport.calls]
-        self.assertEqual(methods[0], "REPORT")
+        self.assertIn("REPORT", methods)
         self.assertIn("PROPFIND", methods)
         self.assertGreaterEqual(methods.count("REPORT"), 2)
 
@@ -401,8 +402,95 @@ class ClientTests(unittest.TestCase):
             uid="allday-uid",
         )
         self.assertTrue(created["all_day"])
+        self.assertEqual(created["dtstart"], "2026-11-29")
+        self.assertEqual(created["dtend"], "2026-11-30")
         self.assertEqual(created["dtstart_local"], "2026-11-29")
         self.assertEqual(created["dtend_local"], "2026-11-30")
+        puts = [call for call in transport.calls if call[0] == "PUT"]
+        body = (puts[0][2] or b"").decode("utf-8")
+        self.assertIn("DTSTART;VALUE=DATE:20261129", body)
+        self.assertIn("DTEND;VALUE=DATE:20261130", body)
+
+    def test_calendar_timezone_used_for_naive_input(self) -> None:
+        calendar_tz = (
+            "BEGIN:VCALENDAR\nBEGIN:VTIMEZONE\nTZID:America/New_York\n"
+            "BEGIN:DAYLIGHT\nDTSTART:19700308T020000\nTZOFFSETFROM:-0500\nTZOFFSETTO:-0400\n"
+            "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU\nEND:DAYLIGHT\n"
+            "BEGIN:STANDARD\nDTSTART:19701101T020000\nTZOFFSETFROM:-0400\nTZOFFSETTO:-0500\n"
+            "RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU\nEND:STANDARD\n"
+            "END:VTIMEZONE\nEND:VCALENDAR"
+        )
+        depth0 = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            "<d:response><d:href>/calendars/user/default/</d:href><d:propstat><d:prop>"
+            "<d:displayname>Personal</d:displayname>"
+            "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>"
+            '<c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>'
+            f"<c:calendar-timezone>{calendar_tz}</c:calendar-timezone>"
+            "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            "</d:multistatus>"
+        ).encode("utf-8")
+        transport = FakeTransport()
+        transport.add("PROPFIND", "/calendars/user/default/", 207, depth0)
+        client = CaldavClient(_settings(), transport=transport)
+        created = client.add_event(
+            summary="Eastern",
+            dtstart="2026-07-15T10:00:00",
+            dtend="2026-07-15T11:00:00",
+            uid="ny-uid",
+        )
+        self.assertEqual(created["dtstart"], "2026-07-15T14:00:00Z")
+        self.assertEqual(created["dtend"], "2026-07-15T15:00:00Z")
+        self.assertEqual(created["dtstart_local"], "2026-07-15T10:00:00-04:00")
+        self.assertEqual(created["timezone"], "America/New_York")
+        puts = [call for call in transport.calls if call[0] == "PUT"]
+        stored = (puts[0][2] or b"").decode("utf-8")
+        self.assertIn("TZID=America/New_York", stored)
+        self.assertIn("RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU", stored)
+
+        explicit = client.add_event(
+            summary="Berlin wins",
+            dtstart="2026-07-15T10:00:00",
+            dtend="2026-07-15T11:00:00",
+            timezone="Europe/Berlin",
+            uid="berlin-uid",
+        )
+        self.assertEqual(explicit["dtstart"], "2026-07-15T08:00:00Z")
+        self.assertEqual(explicit["timezone"], "Europe/Berlin")
+
+    def test_update_put_preserves_recurrence_and_alarm(self) -> None:
+        href = "https://cal.example/calendars/user/default/rich.ics"
+        raw = (
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:rich\r\nSEQUENCE:2\r\n"
+            "DTSTAMP:20200101T000000Z\r\n"
+            "DTSTART;TZID=Europe/Berlin:20260322T100000\r\n"
+            "DTEND;TZID=Europe/Berlin:20260322T110000\r\n"
+            "RRULE:FREQ=WEEKLY\r\nSUMMARY:Old\r\nBEGIN:VALARM\r\n"
+            "ACTION:DISPLAY\r\nDESCRIPTION:Ping\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\n"
+            "END:VEVENT\r\nEND:VCALENDAR\r\n"
+        )
+        transport = FakeTransport()
+        transport.store[href] = ('"etag-1"', raw.encode("utf-8"))
+        client = CaldavClient(
+            Settings(
+                url="https://cal.example/calendars/user/default/",
+                username="user",
+                password="secret",
+                timezone="Europe/Berlin",
+            ),
+            transport=transport,
+        )
+        updated = client.update_event(href, '"etag-1"', summary="New")
+        self.assertEqual(updated["summary"], "New")
+        body = transport.store[href][1].decode("utf-8")
+        self.assertIn("RRULE:FREQ=WEEKLY", body)
+        self.assertIn("BEGIN:VALARM", body)
+        self.assertIn("TRIGGER:-PT10M", body)
+        self.assertIn("UID:rich", body)
+        self.assertIn("SUMMARY:New", body)
+        self.assertIn("SEQUENCE:3", body)
+        self.assertIn("DTSTART;TZID=Europe/Berlin:20260322T100000", body)
 
 
 if __name__ == "__main__":

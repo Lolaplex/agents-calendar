@@ -42,12 +42,18 @@ def calendar_calendars() -> str:
 
 @mcp.tool()
 def calendar_list(start: str, end: str, calendar: str = "", timezone: str = "") -> str:
-    """List VEVENTs between ISO start and end. Server expands recurrence.
+    """List VEVENTs between start and end. The server expands RRULE.
 
-    start and end accept ISO datetimes or date strings. Naive datetimes are localized
-    using timezone (default: configured CALDAV_TIMEZONE or Europe/Berlin).
-    Each returned event contains both dtstart/dtend in UTC and dtstart_local/dtend_local
-    with timezone offset, plus the calendar collection name.
+    Pass start and end as local wall time (2026-10-22T10:00:00) or as absolute
+    instants (Z or a numeric offset). A date (2026-10-22) is 00:00 in the resolved
+    zone. timezone is an IANA name. When it is empty the zone is CALDAV_TIMEZONE
+    or timezone in the credentials file, else the calendar's calendar-timezone,
+    else the host zone, else UTC. Naive values use that zone's offset on that
+    date, including daylight-saving transitions.
+
+    Each event has dtstart/dtend in UTC (or YYYY-MM-DD when all_day), dtstart_local
+    and dtend_local with a numeric offset or a date, timezone (IANA name), all_day,
+    and the calendar name. href and etag are required for update and delete.
     """
     try:
         return _ok(
@@ -61,7 +67,12 @@ def calendar_list(start: str, end: str, calendar: str = "", timezone: str = "") 
 
 @mcp.tool()
 def calendar_get(href: str, timezone: str = "") -> str:
-    """Get a single VEVENT by its href. Returns event details with both UTC and local times."""
+    """Get one VEVENT by href.
+
+    timezone is the IANA display zone for dtstart_local/dtend_local. Empty uses
+    the same resolution order as calendar_list. all_day events return civil dates.
+    Timed dtstart/dtend are UTC. The local fields include a numeric offset.
+    """
     try:
         return _ok(_client().get_event(href, timezone=timezone or None))
     except (ConfigError, CaldavError, IcsError, ValueError) as exc:
@@ -82,11 +93,22 @@ def calendar_add(
 ) -> str:
     """Create a VEVENT (If-None-Match: *).
 
-    dtstart and dtend accept ISO datetimes (e.g. '2026-11-29T16:00:00' or '2026-11-29 16:00').
-    Naive datetimes are deterministically localized in timezone (default: configured
-    CALDAV_TIMEZONE or Europe/Berlin) and converted to UTC, correctly handling summer/winter
-    daylight saving time (DST) shifts. Set all_day=True or pass date strings (e.g. '2026-11-29')
-    for all-day events.
+    Pass dtstart and dtend as local wall time, for example 2026-11-29T16:00:00
+    or 2026-11-29 16:00. Do not convert that wall time to UTC first. timezone is
+    an IANA name; when empty, resolution is CALDAV_TIMEZONE / credentials file,
+    then the calendar's calendar-timezone, then the host zone, then UTC.
+    The offset is the IANA offset for that date, so daylight-saving transitions
+    are correct. A value with Z or a numeric offset is that absolute instant.
+
+    If the wall time does not exist (spring forward) or happens twice (fall back),
+    the tool returns an error. Send an explicit offset for that instant instead.
+
+    all_day=true, or date-only values such as 2026-11-29, stores VALUE=DATE.
+    dtend is exclusive. The same date as dtstart means one civil day.
+
+    Timed events are stored with TZID and VTIMEZONE so a weekly RRULE stays on
+    the same wall clock across DST. The response includes UTC dtstart/dtend
+    (civil dates when all_day), local fields with an offset, timezone, and all_day.
     """
     try:
         return _ok(
@@ -121,7 +143,11 @@ def calendar_update(
 ) -> str:
     """Update a VEVENT. href and etag come from calendar_list or calendar_get. If-Match is required.
 
-    Empty strings leave that field unchanged. Naive dtstart/dtend are localized in timezone.
+    Empty strings leave that field unchanged. Naive dtstart/dtend are wall times
+    in timezone, same rules as calendar_add. RRULE, EXDATE, VALARM, ATTENDEE,
+    UID, and X- properties are preserved. SEQUENCE increments. Changing only one
+    bound keeps the other instant when the span stays positive; if the edit would
+    reverse the span, the previous duration is kept.
     """
     try:
         return _ok(

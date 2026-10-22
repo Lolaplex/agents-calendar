@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 
 from . import ics
 from .config import Settings
+from .tz import iana_from_calendar_timezone, try_zone, zone_key
 
 DAV = "DAV:"
 CALDAV = "urn:ietf:params:xml:ns:caldav"
@@ -68,6 +69,8 @@ class CaldavClient:
         self.base = settings.url.rstrip("/") + "/"
         self._home: str | None = None
         self._transport = transport or self._http
+        self._cal_tz: dict[str, str] = {}
+        self._tz_checked: set[str] = set()
 
     def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         token = base64.b64encode(
@@ -150,7 +153,79 @@ class CaldavClient:
             body,
             {"Content-Type": "application/xml; charset=utf-8", "Depth": depth},
         )
+        if b"calendar-timezone" in body and status < 400 and payload.strip():
+            self._absorb_calendar_timezones(payload, url)
         return status, payload
+
+    def _tz_key(self, href: str, base: str | None = None) -> str:
+        try:
+            return self.resolve_href(href, base).rstrip("/")
+        except CaldavError:
+            return href.strip().rstrip("/")
+
+    def _absorb_calendar_timezones(self, payload: bytes, base: str) -> None:
+        try:
+            root = ET.fromstring(payload)
+        except ET.ParseError:
+            return
+        for resp in root.iter():
+            if _local(resp) != "response":
+                continue
+            href = _child_text(resp, DAV, "href")
+            if not href:
+                continue
+            rtype = resp.find(f".//{_tag(DAV, 'resourcetype')}")
+            is_cal = rtype is not None and any(_local(child) == "calendar" for child in list(rtype))
+            tzid = _child_text(resp, CALDAV, "calendar-timezone-id").strip()
+            zone = try_zone(tzid)
+            if zone is None:
+                zone = try_zone(iana_from_calendar_timezone(_child_text(resp, CALDAV, "calendar-timezone")) or "")
+            key = self._tz_key(href, base)
+            if is_cal or zone is not None:
+                self._tz_checked.add(key)
+            if zone is not None:
+                self._cal_tz[key] = zone_key(zone)
+
+    def _timezone_body(self) -> bytes:
+        return (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            f'<d:propfind xmlns:d="{DAV}" xmlns:c="{CALDAV}">'
+            "<d:prop><c:calendar-timezone/><c:calendar-timezone-id/></d:prop>"
+            "</d:propfind>"
+        ).encode("utf-8")
+
+    def _ensure_calendar_tz(self, url: str) -> str | None:
+        key = url.rstrip("/")
+        if key in self._tz_checked:
+            return self._cal_tz.get(key)
+        try:
+            status, _payload = self._propfind(url, "0", self._timezone_body())
+        except CaldavError:
+            self._tz_checked.add(key)
+            return None
+        self._tz_checked.add(key)
+        if status >= 400:
+            return None
+        return self._cal_tz.get(key)
+
+    def _resolve_zone(self, explicit: str | None, calendar_url: str | None):
+        explicit_name = (explicit or "").strip()
+        configured = self.settings.timezone.strip()
+        calendar_tz = None
+        if not explicit_name and not configured and calendar_url:
+            calendar_tz = self._ensure_calendar_tz(calendar_url)
+        return ics.resolve_timezone(
+            explicit_name or None,
+            calendar_tz=calendar_tz,
+            configured=configured,
+        )
+
+    def _collection_url(self, href: str) -> str:
+        url = self.resolve_href(href)
+        if url.endswith("/"):
+            return url
+        parent, _slash, _name = url.rpartition("/")
+        return parent + "/" if parent else url
 
     def _href_under(self, node: ET.Element, ns: str, name: str, base: str) -> str:
         parent = node.find(f".//{_tag(ns, name)}")
@@ -204,7 +279,8 @@ class CaldavClient:
         return (
             '<?xml version="1.0" encoding="utf-8"?>'
             f'<d:propfind xmlns:d="{DAV}" xmlns:c="{CALDAV}">'
-            "<d:prop><d:displayname/><d:resourcetype/><d:getetag/><c:supported-calendar-component-set/></d:prop>"
+            "<d:prop><d:displayname/><d:resourcetype/><d:getetag/>"
+            "<c:supported-calendar-component-set/><c:calendar-timezone/><c:calendar-timezone-id/></d:prop>"
             "</d:propfind>"
         ).encode("utf-8")
 
@@ -307,17 +383,21 @@ class CaldavClient:
         calendar: str | None = None,
         timezone: str | None = None,
     ) -> list[dict[str, Any]]:
-        target_tz = timezone or self.settings.timezone or None
-        body = self._query_body(start, end, tz=target_tz)
         if calendar:
             target_col = self._event_collection(calendar)
+            zone = self._resolve_zone(timezone, target_col)
+            zone_name = zone_key(zone)
+            body = self._query_body(start, end, tz=zone_name)
             cal_name = self._calendar_name(calendar) or calendar
-            status, events = self._report(target_col, body, calendar_name=cal_name, tz=target_tz)
+            status, events = self._report(target_col, body, calendar_name=cal_name, tz=zone_name)
             if status >= 400:
                 raise CaldavError(f"CalDAV REPORT {status}")
             events.sort(key=lambda row: str(row.get("dtstart") or ""))
             return events
-        status, events = self._report(self.base, body, tz=target_tz)
+        zone = self._resolve_zone(timezone, self.base)
+        zone_name = zone_key(zone)
+        body = self._query_body(start, end, tz=zone_name)
+        status, events = self._report(self.base, body, tz=zone_name)
         if status < 400:
             events.sort(key=lambda row: str(row.get("dtstart") or ""))
             return events
@@ -335,7 +415,9 @@ class CaldavClient:
         for idx, target in enumerate(targets):
             url = target if target.endswith("/") else target + "/"
             cal_name = cals[idx].get("displayname") or "" if idx < len(cals) else ""
-            st, rows = self._report(url, body, calendar_name=cal_name, tz=target_tz)
+            row_zone = zone_key(self._resolve_zone(timezone, url))
+            row_body = self._query_body(start, end, tz=row_zone)
+            st, rows = self._report(url, row_body, calendar_name=cal_name, tz=row_zone)
             last_status = st
             if st < 400:
                 events.extend(rows)
@@ -421,8 +503,9 @@ class CaldavClient:
         all_day: bool = False,
         status: str = "",
     ) -> dict[str, Any]:
-        target_tz = timezone or self.settings.timezone or None
         event_uid = uid or ics.new_uid()
+        cal_col = self._event_collection(calendar)
+        zone_name = zone_key(self._resolve_zone(timezone, cal_col))
         payload = ics.emit_vevent(
             uid=event_uid,
             summary=summary,
@@ -430,11 +513,10 @@ class CaldavClient:
             dtend=dtend,
             location=location,
             description=description,
-            timezone=target_tz,
+            timezone=zone_name,
             all_day=all_day,
             status=status,
         )
-        cal_col = self._event_collection(calendar)
         cal_name = self._calendar_name(calendar) if calendar else self._calendar_name_from_href(cal_col)
         href = urljoin(cal_col, f"{event_uid}.ics")
         status_code, hdrs, _body = self.request(
@@ -448,7 +530,7 @@ class CaldavClient:
         )
         if status_code not in (200, 201, 204):
             raise CaldavError(f"CalDAV PUT {status_code}")
-        parsed = ics.parse_vevent(payload, tz=target_tz)
+        parsed = ics.parse_vevent(payload, tz=zone_name)
         parsed["href"] = href
         parsed["etag"] = hdrs.get("etag", "")
         if cal_name:
@@ -461,9 +543,9 @@ class CaldavClient:
         return hdrs.get("etag", ""), payload.decode("utf-8")
 
     def get_event(self, href: str, timezone: str | None = None) -> dict[str, Any]:
-        target_tz = timezone or self.settings.timezone or None
+        zone_name = zone_key(self._resolve_zone(timezone, self._collection_url(href)))
         etag, raw = self.get_event_raw(href)
-        parsed = ics.parse_vevent(raw, tz=target_tz)
+        parsed = ics.parse_vevent(raw, tz=zone_name)
         resolved_href = self.resolve_href(href)
         parsed["href"] = resolved_href
         parsed["etag"] = etag
@@ -488,8 +570,8 @@ class CaldavClient:
     ) -> dict[str, Any]:
         if not etag.strip():
             raise CaldavError("etag required for update")
-        target_tz = timezone or self.settings.timezone or None
         url = self.resolve_href(href)
+        zone_name = zone_key(self._resolve_zone(timezone, self._collection_url(href)))
         _old_etag, raw = self.get_event_raw(href)
         patched = ics.patch_vevent(
             raw,
@@ -498,7 +580,7 @@ class CaldavClient:
             dtend=dtend,
             location=location,
             description=description,
-            timezone=target_tz,
+            timezone=zone_name if (dtstart or dtend or all_day is not None or timezone) else None,
             all_day=all_day,
             status=status,
         )
@@ -513,7 +595,7 @@ class CaldavClient:
         )
         if status_code not in (200, 201, 204):
             raise CaldavError(f"CalDAV PUT {status_code}")
-        parsed = ics.parse_vevent(patched, tz=target_tz)
+        parsed = ics.parse_vevent(patched, tz=zone_name)
         parsed["href"] = href
         parsed["etag"] = hdrs.get("etag", "")
         cal_slug = urlparse(url).path.rsplit("/", 2)[-2]

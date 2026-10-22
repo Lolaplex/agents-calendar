@@ -138,3 +138,30 @@ class ConfigTests(unittest.TestCase):
         os.environ["CALDAV_CALENDAR"] = "Personal"
         settings_env = load_settings()
         self.assertEqual(settings_env.calendar, "Personal")
+
+    def test_timezone_config_does_not_invent_a_region(self) -> None:
+        saved = {key: os.environ.pop(key, None) for key in ("CALDAV_TIMEZONE", "AGENTS_TIMEZONE", "TZ")}
+        try:
+            self._write_json(
+                url="https://dav.example/",
+                username="alice",
+                password="secret",
+            )
+            self.assertEqual(load_settings().timezone, "")
+            self._write_json(
+                url="https://dav.example/",
+                username="alice",
+                password="secret",
+                timezone="Pacific/Auckland",
+            )
+            self.assertEqual(load_settings().timezone, "Pacific/Auckland")
+            os.environ["AGENTS_TIMEZONE"] = "America/Chicago"
+            self.assertEqual(load_settings().timezone, "America/Chicago")
+            os.environ["CALDAV_TIMEZONE"] = "Asia/Tokyo"
+            self.assertEqual(load_settings().timezone, "Asia/Tokyo")
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value

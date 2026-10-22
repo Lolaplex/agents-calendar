@@ -50,11 +50,14 @@ Highest priority first:
   "url": "https://example.com/dav/calendars/user/calendar/",
   "username": "user",
   "password": "app-password",
-  "calendar": "Work"
+  "calendar": "Work",
+  "timezone": "UTC"
 }
 ```
 
 `calendar` (or `CALDAV_CALENDAR`) is optional: the collection, by display name or URL, that `add` writes to. `list` searches every collection unless `--calendar` names one. Both commands and the MCP tools accept `calendar` per call.
+
+`timezone` is an optional IANA name (`America/New_York`, `Europe/Berlin`, `UTC`, …). `CALDAV_TIMEZONE` overrides it. See [Time zones](#time-zones).
 
 CLI and MCP both read this file, so a desktop host does not need the password in its MCP config. A URL that is only a host or principal is resolved through `calendar-home-set`. `add` writes into a VEVENT collection, not a reminder collection.
 
@@ -86,7 +89,31 @@ Primary surface. They mirror the CLI. Password never appears in the JSON.
 | `calendar_update` | Replace. `href` and `etag` come from `calendar_list` or `calendar_get` |
 | `calendar_delete` | Delete. Same `href` + `etag` pair |
 
-Six tools. Timezone and daylight saving time (DST) shifts are handled deterministically via Python `zoneinfo`.
+Six tools. Pass local wall time; the package applies the IANA zone. See [Time zones](#time-zones).
+
+---
+
+## Time zones
+
+Offsets come from Python `zoneinfo` and the IANA time zone database (`tzdata` is installed with this package). Nothing here hard-codes a region.
+
+The zone for a call is the first one that exists:
+
+1. The `timezone` argument / `--timezone`
+2. `CALDAV_TIMEZONE`, or `timezone` in `calendar.json`
+3. The calendar collection's CalDAV `calendar-timezone`, when that id is an IANA name
+4. The host zone (`TZ`, then the OS database)
+5. `UTC`
+
+A naive value such as `2026-10-22T10:00:00` means 10:00 in that zone on that date. Daylight-saving transitions are per date. `2026-10-22T10:00:00Z` or `2026-10-22T10:00:00+02:00` is an absolute instant and is stored as that instant. Do not convert a local wall time to UTC before sending it; a wrong offset stores a different instant.
+
+If the wall time falls in a spring-forward gap, or occurs twice on a fall-back, the call fails and names the zone. Send an explicit offset for the instant you mean. Those ambiguous instants are stored as UTC, because `DTSTART;TZID` cannot represent both occurrences.
+
+Timed events are written with `DTSTART;TZID=…` and a `VTIMEZONE`. The CalDAV server expands `RRULE` in that zone, so a weekly 10:00 stays 10:00 across the change. All-day events are `DTSTART;VALUE=DATE` / `DTEND;VALUE=DATE`. `DTEND` is exclusive: the same start and end date is one day, and a later end date is already exclusive.
+
+Each event returns `dtstart` (UTC, or `YYYY-MM-DD` when `all_day`), `dtstart_local` (offset or date), the same pair for the end, `timezone` (IANA name), and `all_day`.
+
+An update changes only the fields you pass. `RRULE`, alarms, attendees, and other properties stay. `SEQUENCE` increments.
 
 ---
 
