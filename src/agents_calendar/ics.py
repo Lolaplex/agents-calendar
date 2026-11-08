@@ -391,6 +391,41 @@ def parse_vevent(raw: str, tz: str | ZoneInfo | None = None) -> dict[str, Any]:
     return event
 
 
+def parse_vevents(raw: str, tz: str | ZoneInfo | None = None) -> list[dict[str, Any]]:
+    """Parse every VEVENT in one payload, in document order.
+
+    A subscribed feed can pack several events into one resource. Each block is
+    parsed with the payload's VTIMEZONE definitions prepended, so a ``TZID``
+    that is not an IANA name still resolves.
+    """
+    lines = _unfold(raw)
+    timezones: list[str] = []
+    blocks: list[list[str]] = []
+    current: list[str] | None = None
+    in_tz = False
+    for line in lines:
+        upper = line.strip().upper()
+        if upper == "BEGIN:VTIMEZONE":
+            in_tz = True
+            timezones.append(line)
+            continue
+        if in_tz:
+            timezones.append(line)
+            if upper == "END:VTIMEZONE":
+                in_tz = False
+            continue
+        if upper == "BEGIN:VEVENT":
+            current = [line]
+            continue
+        if current is None:
+            continue
+        current.append(line)
+        if upper == "END:VEVENT":
+            blocks.append(current)
+            current = None
+    return [parse_vevent("\n".join(timezones + block), tz) for block in blocks]
+
+
 def _parsed_instant(parsed: dict[str, Any], utc_key: str, local_key: str) -> datetime:
     local = str(parsed.get(local_key) or "")
     utc = str(parsed.get(utc_key) or "")

@@ -1,4 +1,4 @@
-"""CalDAV credentials. Process env wins; else ~/.agents/calendar.json. Password never in messages."""
+"""CalDAV and live ICS feed credentials. Process env wins; else ~/.agents/calendar.json. Password never in messages."""
 from __future__ import annotations
 
 import json
@@ -16,10 +16,25 @@ class ConfigError(ValueError):
 @dataclass(frozen=True)
 class Settings:
     url: str
-    username: str
-    password: str
+    username: str = ""
+    password: str = ""
     calendar: str = ""
     timezone: str = ""
+
+
+def is_ics_feed_url(url: str) -> bool:
+    raw = url.strip().lower()
+    if raw.startswith("webcal://"):
+        return True
+    path = raw.split("?", 1)[0].split("#", 1)[0]
+    return path.endswith(".ics")
+
+
+def normalize_calendar_url(url: str) -> str:
+    raw = url.strip()
+    if raw.lower().startswith("webcal://"):
+        return "https://" + raw[9:]
+    return raw
 
 
 def agents_home() -> Path:
@@ -208,20 +223,24 @@ def _load_file() -> dict[str, str]:
 
 def load_settings() -> Settings:
     file_vals = _load_file()
-    url = os.environ.get("CALDAV_URL", "").strip() or file_vals.get("url", "")
+    raw_url = os.environ.get("CALDAV_URL", "").strip() or file_vals.get("url", "")
+    url = normalize_calendar_url(raw_url)
     username = os.environ.get("CALDAV_USERNAME", "").strip() or file_vals.get("username", "")
     password = os.environ.get("CALDAV_PASSWORD", "").strip() or file_vals.get("password", "")
     calendar = os.environ.get("CALDAV_CALENDAR", "").strip() or file_vals.get("calendar", "")
     timezone = configured_timezone()
-    missing = [
-        name
-        for name, val in (
-            ("CALDAV_URL", url),
-            ("CALDAV_USERNAME", username),
-            ("CALDAV_PASSWORD", password),
-        )
-        if not val
-    ]
+    if is_ics_feed_url(raw_url):
+        missing = [] if url else ["CALDAV_URL"]
+    else:
+        missing = [
+            name
+            for name, val in (
+                ("CALDAV_URL", url),
+                ("CALDAV_USERNAME", username),
+                ("CALDAV_PASSWORD", password),
+            )
+            if not val
+        ]
     if missing:
         raise ConfigError("Set " + ", ".join(missing) + f" or {creds_path()}")
     return Settings(

@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import unittest
 
-from agents_calendar.ics import IcsError, emit_vevent, parse_iso, parse_vevent, patch_vevent, to_caldav_utc
+from agents_calendar.ics import (
+    IcsError,
+    emit_vevent,
+    parse_iso,
+    parse_vevent,
+    parse_vevents,
+    patch_vevent,
+    to_caldav_utc,
+)
 
 
 class IcsTests(unittest.TestCase):
@@ -378,3 +386,35 @@ class IcsTests(unittest.TestCase):
         self.assertEqual(parsed["summary"], "New")
         self.assertEqual(parsed["dtstart"], "2026-03-29T08:00:00Z")
         self.assertEqual(parsed["dtend"], "2026-03-29T10:00:00Z")
+
+    def test_windows_tzid_and_multi_vevents(self) -> None:
+        eol = chr(13) + chr(10)
+        raw = eol.join(
+            [
+                "BEGIN:VCALENDAR",
+                "VERSION:2.0",
+                "BEGIN:VEVENT",
+                "UID:outlook-1",
+                'DTSTART;TZID="W. Europe Standard Time":20261129T090000',
+                'DTEND;TZID="W. Europe Standard Time":20261129T100000',
+                "SUMMARY:Daily Standup",
+                "END:VEVENT",
+                "BEGIN:VEVENT",
+                "UID:outlook-2",
+                'DTSTART;TZID="W. Europe Standard Time":20261129T140000',
+                'DTEND;TZID="W. Europe Standard Time":20261129T153000',
+                "SUMMARY:Sprint Review",
+                "END:VEVENT",
+                "END:VCALENDAR",
+                "",
+            ]
+        )
+        events = parse_vevents(raw, tz="Europe/Berlin")
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0]["uid"], "outlook-1")
+        self.assertEqual(events[0]["summary"], "Daily Standup")
+        self.assertEqual(events[0]["dtstart"], "2026-11-29T08:00:00Z")
+        self.assertEqual(events[0]["dtstart_local"], "2026-11-29T09:00:00+01:00")
+        self.assertEqual(events[1]["uid"], "outlook-2")
+        self.assertEqual(events[1]["summary"], "Sprint Review")
+        self.assertEqual(events[1]["dtstart"], "2026-11-29T13:00:00Z")

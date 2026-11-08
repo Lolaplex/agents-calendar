@@ -23,14 +23,44 @@ _UTC = dt_timezone.utc
 _WEEKDAYS = ("SU", "MO", "TU", "WE", "TH", "FR", "SA")
 
 
+# Outlook and Exchange write Windows zone ids into TZID. Map the ones that
+# appear in practice; anything else falls through to the IANA lookup.
+_WINDOWS_ZONES: dict[str, str] = {
+    "AUS Eastern Standard Time": "Australia/Sydney",
+    "Central Europe Standard Time": "Europe/Warsaw",
+    "Central European Standard Time": "Europe/Warsaw",
+    "Central Standard Time": "America/Chicago",
+    "China Standard Time": "Asia/Shanghai",
+    "Coordinated Universal Time": "UTC",
+    "Eastern Daylight Time": "America/New_York",
+    "Eastern Standard Time": "America/New_York",
+    "GMT Standard Time": "Europe/London",
+    "Greenwich Standard Time": "UTC",
+    "India Standard Time": "Asia/Kolkata",
+    "Mountain Standard Time": "America/Denver",
+    "Pacific Daylight Time": "America/Los_Angeles",
+    "Pacific Standard Time": "America/Los_Angeles",
+    "Romance Standard Time": "Europe/Paris",
+    "Tokyo Standard Time": "Asia/Tokyo",
+    "US Mountain Standard Time": "America/Phoenix",
+    "UTC": "UTC",
+    "W. Europe Daylight Time": "Europe/Berlin",
+    "W. Europe Standard Time": "Europe/Berlin",
+}
+
+
 def try_zone(name: str) -> ZoneInfo | None:
     raw = name.strip()
     if not raw or any(ch in raw for ch in "\r\n\t;:,"):
         return None
-    try:
-        return ZoneInfo(raw)
-    except (ZoneInfoNotFoundError, ValueError, OSError):
-        return None
+    for candidate in (raw, _WINDOWS_ZONES.get(raw, "")):
+        if not candidate:
+            continue
+        try:
+            return ZoneInfo(candidate)
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            continue
+    return None
 
 
 def require_zone(name: str) -> ZoneInfo:

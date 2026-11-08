@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Timed events are written with `DTSTART`/`DTEND;TZID=<zone>` and a `VTIMEZONE` derived from the IANA time zone database. Weekly recurrence expanded by the CalDAV server therefore stays on the same wall clock across DST. An ambiguous wall time is stored as UTC so the fall-back instant is not lost.
 - Zone resolution order: explicit argument, then `CALDAV_TIMEZONE` (or `timezone` in the credentials file), then the collection's CalDAV `calendar-timezone` when its id is an IANA name, then the host zone (`TZ` or the OS database), then `UTC`.
 - `tzdata` is a dependency on every platform so `zoneinfo` has IANA data when the operating system does not.
+- A `webcal://` or `.ics` URL is read as a live subscribed feed instead of CalDAV: one GET, no PROPFIND, and no credentials required. `CALDAV_USERNAME` and `CALDAV_PASSWORD` stay required for CalDAV and are optional for a feed.
+- `parse_vevents` returns every VEVENT in one calendar-data block, so a feed that packs several events into one resource lists them all.
+- Windows time zone ids (`W. Europe Standard Time`, `Eastern Standard Time`, …) map to their IANA zone.
 
 ### Changed
 - All-day `dtstart` / `dtend` / `dtstart_local` / `dtend_local` are `YYYY-MM-DD` dates. They are no longer UTC midnight timestamps.

@@ -1,4 +1,4 @@
-"""CalDAV HTTP client. Stdlib urllib + ElementTree."""
+"""Generic CalDAV and live ICS feed HTTP client. Stdlib urllib + ElementTree."""
 from __future__ import annotations
 
 import base64
@@ -9,7 +9,7 @@ from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from . import ics
-from .config import Settings
+from .config import Settings, is_ics_feed_url, normalize_calendar_url
 from .tz import iana_from_calendar_timezone, try_zone, zone_key
 
 DAV = "DAV:"
@@ -66,20 +66,24 @@ def _components(node: ET.Element) -> list[str]:
 class CaldavClient:
     def __init__(self, settings: Settings, transport: Transport | None = None) -> None:
         self.settings = settings
-        self.base = settings.url.rstrip("/") + "/"
+        self.is_feed = is_ics_feed_url(settings.url)
+        normalized = normalize_calendar_url(settings.url)
+        self.feed_url = normalized
+        self.base = normalized if self.is_feed else normalized.rstrip("/") + "/"
         self._home: str | None = None
         self._transport = transport or self._http
         self._cal_tz: dict[str, str] = {}
         self._tz_checked: set[str] = set()
 
     def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
-        token = base64.b64encode(
-            f"{self.settings.username}:{self.settings.password}".encode("utf-8")
-        ).decode("ascii")
-        headers = {
-            "Authorization": f"Basic {token}",
+        headers: dict[str, str] = {
             "User-Agent": "agents-calendar/0.0.1",
         }
+        if self.settings.username or self.settings.password:
+            token = base64.b64encode(
+                f"{self.settings.username}:{self.settings.password}".encode("utf-8")
+            ).decode("ascii")
+            headers["Authorization"] = f"Basic {token}"
         if extra:
             headers.update(extra)
         return headers
@@ -134,7 +138,7 @@ class CaldavClient:
         return status, hdrs, payload
 
     def resolve_href(self, href: str, base: str | None = None) -> str:
-        raw = href.strip()
+        raw = normalize_calendar_url(href)
         if not raw:
             raise CaldavError("empty href")
         parsed = urlparse(raw)
@@ -143,7 +147,7 @@ class CaldavClient:
         return urljoin(base or self._home or self.base, raw)
 
     def _origin(self) -> str:
-        parsed = urlparse(self.settings.url)
+        parsed = urlparse(normalize_calendar_url(self.settings.url))
         return f"{parsed.scheme}://{parsed.netloc}"
 
     def _propfind(self, url: str, depth: str, body: bytes) -> tuple[int, bytes]:
@@ -304,6 +308,15 @@ class CaldavClient:
         return rows
 
     def calendars(self) -> list[dict[str, Any]]:
+        if self.is_feed:
+            return [
+                {
+                    "href": self.feed_url,
+                    "etag": "",
+                    "displayname": self.settings.calendar or "Subscribed ICS Feed",
+                    "components": ["VEVENT"],
+                }
+            ]
         body = self._list_body()
         status, payload = self._propfind(self.base, "1", body)
         if status < 400:
@@ -338,12 +351,12 @@ class CaldavClient:
             data = _child_text(node, CALDAV, "calendar-data")
             if not data:
                 continue
-            parsed = ics.parse_vevent(data, tz=tz)
-            parsed["href"] = href
-            parsed["etag"] = etag
-            if calendar_name:
-                parsed["calendar"] = calendar_name
-            events.append(parsed)
+            for parsed in ics.parse_vevents(data, tz=tz):
+                parsed["href"] = href
+                parsed["etag"] = etag
+                if calendar_name:
+                    parsed["calendar"] = calendar_name
+                events.append(parsed)
         return events
 
     def _report(
@@ -358,6 +371,39 @@ class CaldavClient:
         if status >= 400:
             return status, []
         return status, self._events_from(payload, calendar_name=calendar_name, tz=tz)
+
+    def _list_from_feed(
+        self,
+        feed_url: str,
+        start: str,
+        end: str,
+        calendar_name: str = "",
+        tz: str | None = None,
+    ) -> list[dict[str, Any]]:
+        url = normalize_calendar_url(feed_url)
+        _status, hdrs, payload = self.request("GET", url)
+        raw = payload.decode("utf-8", errors="replace")
+        etag = hdrs.get("etag", "")
+        start_dt = ics.parse_iso(start, default_tz=tz)
+        end_dt = ics.parse_iso(end, default_tz=tz)
+        cal_label = calendar_name or self.settings.calendar or "Subscribed ICS Feed"
+        out: list[dict[str, Any]] = []
+        for ev in ics.parse_vevents(raw, tz=tz):
+            ev_start_raw = str(ev.get("dtstart") or "")
+            ev_end_raw = str(ev.get("dtend") or ev_start_raw)
+            if ev_start_raw:
+                ev_start = ics.parse_iso(ev_start_raw, default_tz=tz)
+                ev_end = ics.parse_iso(ev_end_raw, default_tz=tz) if ev_end_raw else ev_start
+                if ev_end <= start_dt and ev_start < start_dt:
+                    continue
+                if ev_start >= end_dt:
+                    continue
+            ev["href"] = url
+            ev["etag"] = etag
+            ev["calendar"] = cal_label
+            out.append(ev)
+        out.sort(key=lambda row: str(row.get("dtstart") or ""))
+        return out
 
     def _calendar_name(self, target: str | None) -> str:
         if not target:
@@ -383,6 +429,17 @@ class CaldavClient:
         calendar: str | None = None,
         timezone: str | None = None,
     ) -> list[dict[str, Any]]:
+        target_tz = timezone or self.settings.timezone or None
+        if self.is_feed:
+            return self._list_from_feed(
+                self.feed_url,
+                start,
+                end,
+                calendar_name=calendar or self.settings.calendar,
+                tz=target_tz,
+            )
+        if calendar and is_ics_feed_url(calendar):
+            return self._list_from_feed(calendar, start, end, tz=target_tz)
         if calendar:
             target_col = self._event_collection(calendar)
             zone = self._resolve_zone(timezone, target_col)
@@ -503,6 +560,8 @@ class CaldavClient:
         all_day: bool = False,
         status: str = "",
     ) -> dict[str, Any]:
+        if self.is_feed:
+            raise CaldavError("Cannot add events to a read-only ICS feed URL")
         event_uid = uid or ics.new_uid()
         cal_col = self._event_collection(calendar)
         zone_name = zone_key(self._resolve_zone(timezone, cal_col))
@@ -568,6 +627,8 @@ class CaldavClient:
         all_day: bool | None = None,
         status: str | None = None,
     ) -> dict[str, Any]:
+        if self.is_feed:
+            raise CaldavError("Cannot update events on a read-only ICS feed URL")
         if not etag.strip():
             raise CaldavError("etag required for update")
         url = self.resolve_href(href)
@@ -604,6 +665,8 @@ class CaldavClient:
         return parsed
 
     def delete_event(self, href: str, etag: str) -> dict[str, str]:
+        if self.is_feed:
+            raise CaldavError("Cannot delete events on a read-only ICS feed URL")
         if not etag.strip():
             raise CaldavError("etag required for delete")
         url = self.resolve_href(href)

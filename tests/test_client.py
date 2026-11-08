@@ -492,6 +492,37 @@ class ClientTests(unittest.TestCase):
         self.assertIn("SEQUENCE:3", body)
         self.assertIn("DTSTART;TZID=Europe/Berlin:20260322T100000", body)
 
+    def test_live_ics_feed_webcal_and_range_filter(self) -> None:
+        feed_body = (
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+            "BEGIN:VEVENT\r\nUID:ev-early\r\n"
+            'DTSTART;TZID="W. Europe Standard Time":20261128T090000\r\n'
+            'DTEND;TZID="W. Europe Standard Time":20261128T100000\r\n'
+            "SUMMARY:Old Meeting\r\nEND:VEVENT\r\n"
+            "BEGIN:VEVENT\r\nUID:ev-target\r\n"
+            'DTSTART;TZID="W. Europe Standard Time":20261129T100000\r\n'
+            'DTEND;TZID="W. Europe Standard Time":20261129T110000\r\n'
+            "SUMMARY:Work Sync\r\nEND:VEVENT\r\n"
+            "END:VCALENDAR\r\n"
+        ).encode("utf-8")
+        transport = FakeTransport()
+        feed_https = "https://outlook.office365.com/owa/calendar/token/reachcalendar.ics"
+        transport.store[feed_https] = ('"feed-etag"', feed_body)
+        client = CaldavClient(
+            Settings(url="webcal://outlook.office365.com/owa/calendar/token/reachcalendar.ics", calendar="Work"),
+            transport=transport,
+        )
+        cals = client.calendars()
+        self.assertEqual(len(cals), 1)
+        self.assertEqual(cals[0]["displayname"], "Work")
+        rows = client.list_events("2026-11-29T00:00:00Z", "2026-11-30T00:00:00Z", timezone="Europe/Berlin")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["uid"], "ev-target")
+        self.assertEqual(rows[0]["summary"], "Work Sync")
+        self.assertEqual(rows[0]["calendar"], "Work")
+        with self.assertRaises(CaldavError):
+            client.add_event(summary="No Write", dtstart="2026-11-29T12:00:00Z", dtend="2026-11-29T13:00:00Z")
+
 
 if __name__ == "__main__":
     unittest.main()
