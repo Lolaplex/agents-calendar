@@ -662,6 +662,16 @@ def _locate_tzif(key: str) -> Path:
         path = Path(base) / safe
         if path.is_file():
             return path
+    # The ``tzdata`` package ships the database as package data, so it has no
+    # ``TZPATH`` entry. Windows installs rely on it because the OS has no tz db.
+    try:
+        from importlib.resources import files
+
+        resource = files("tzdata.zoneinfo").joinpath(safe)
+        if resource.is_file():
+            return Path(str(resource))
+    except (ImportError, OSError, TypeError):
+        pass
     raise IcsError(
         f"no IANA tz data file for '{key}'. Install the tzdata package or the system time zone database."
     )
