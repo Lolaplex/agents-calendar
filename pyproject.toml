@@ -15,6 +15,7 @@ dependencies = [
     "mcp>=1.0.0,<2",
     # zoneinfo needs the IANA database. Windows and minimal images do not ship it.
     "tzdata",
+    "agents-workspace>=0.1.0,<1",
 ]
 keywords = ["caldav", "calendar", "mcp", "agents", "cli"]
 classifiers = [

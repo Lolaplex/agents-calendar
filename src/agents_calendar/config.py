@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from agents_workspace import Workspace
+
 
 class ConfigError(ValueError):
     """Missing or invalid CalDAV credentials."""
@@ -38,10 +40,7 @@ def normalize_calendar_url(url: str) -> str:
 
 
 def agents_home() -> Path:
-    override = os.environ.get("AGENTS_HOME", "").strip()
-    if override:
-        return Path(override).expanduser()
-    return Path.home() / ".agents"
+    return Workspace.from_env().root
 
 
 def creds_path() -> Path:
