@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `.mailmap` maps legacy `Klix`/`Felix Kempf` author names to `Klix927` (no history rewrite; display only).
+
+### Changed
 - Credential load order is now `<ws>/secrets.json` > `<ws>/calendar.json` > `<host>/secrets.json` > `CALDAV_*` env (host-level fallback) > legacy `<ws>/.env` (deprecated, warns). Previously env won over the file.
 - Helper renamed `agents_home()` -> `workspace_dir()`; MCP config probes `<host>/mcp.json` + `<ws>/mcp.json` overlay instead of `~/.agents/mcp.json`.
 - Update-check cache under `<host>/cache/updates/`.
