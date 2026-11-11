@@ -1,4 +1,8 @@
-"""CalDAV and live ICS feed credentials. Process env wins; else ~/.agents/calendar.json. Password never in messages."""
+"""CalDAV and live ICS feed credentials.
+
+Load order: <ws>/secrets.json override > <ws>/calendar.json > host
+secrets.json > CALDAV_* env (host-level fallback) > legacy <ws>/.env
+(one release, warns). Password never in messages."""
 from __future__ import annotations
 
 import json
@@ -39,12 +43,12 @@ def normalize_calendar_url(url: str) -> str:
     return raw
 
 
-def agents_home() -> Path:
+def workspace_dir() -> Path:
     return Workspace.from_env().root
 
 
 def creds_path() -> Path:
-    return agents_home() / "calendar.json"
+    return workspace_dir() / "calendar.json"
 
 
 def _parse_dotenv(text: str) -> dict[str, str]:
@@ -159,7 +163,7 @@ def configured_timezone() -> str:
     """Zone from the environment or the credentials file. Empty when unset.
 
     ``CALDAV_TIMEZONE`` then ``AGENTS_TIMEZONE``, then ``timezone`` in
-    ``calendar.json`` or ``CALDAV_TIMEZONE`` in ``~/.agents/.env``. This does
+    ``calendar.json`` or ``CALDAV_TIMEZONE`` in ``<ws>/.env``. This does
     not consult the host zone or a calendar's ``calendar-timezone`` property.
     """
     for env_var in ("CALDAV_TIMEZONE", "AGENTS_TIMEZONE"):
@@ -200,10 +204,34 @@ def _map_dotenv(data: dict[str, str]) -> dict[str, str]:
     }
 
 
+def _load_secrets_file(path: Path) -> dict[str, str]:
+    """CALDAV credentials from a secrets.json ``caldav`` section."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"invalid {path}") from exc
+    except OSError as exc:
+        raise ConfigError(f"unreadable {path}") from exc
+    section = raw.get("caldav")
+    if not isinstance(section, dict):
+        return {}
+    return _map_json(section)
+
+
 def _load_file() -> dict[str, str]:
-    home = agents_home()
-    json_path = home / "calendar.json"
-    env_path = home / ".env"
+    ws = Workspace.from_env()
+    out: dict[str, str] = {}
+
+    def merge(src: dict[str, str]) -> None:
+        for key, val in src.items():
+            if val:
+                out.setdefault(key, val)
+
+    # highest wins first; setdefault keeps earlier (higher) precedence
+    ws_secrets = ws.secrets
+    if ws_secrets.is_file():
+        merge(_load_secrets_file(ws_secrets))
+    json_path = ws.root / "calendar.json"
     if json_path.is_file():
         try:
             raw = json.loads(json_path.read_text(encoding="utf-8"))
@@ -211,22 +239,36 @@ def _load_file() -> dict[str, str]:
             raise ConfigError(f"invalid {json_path}") from exc
         except OSError as exc:
             raise ConfigError(f"unreadable {json_path}") from exc
-        return _map_json(raw)
+        merge(_map_json(raw))
+    host_secrets = ws.host.secrets
+    if host_secrets.is_file():
+        merge(_load_secrets_file(host_secrets))
+    for name in ("url", "username", "password", "calendar", "timezone"):
+        env_name = f"CALDAV_{name.upper()}"
+        val = os.environ.get(env_name, "").strip()
+        if val:
+            out.setdefault(name, val)
+    env_path = ws.root / ".env"
     if env_path.is_file():
+        import warnings
+        warnings.warn(
+            f"{env_path} is deprecated; move credentials into secrets.json",
+            DeprecationWarning, stacklevel=2,
+        )
         try:
-            return _map_dotenv(_parse_dotenv(env_path.read_text(encoding="utf-8")))
+            merge(_map_dotenv(_parse_dotenv(env_path.read_text(encoding="utf-8"))))
         except OSError as exc:
             raise ConfigError(f"unreadable {env_path}") from exc
-    return {}
+    return out
 
 
 def load_settings() -> Settings:
     file_vals = _load_file()
-    raw_url = os.environ.get("CALDAV_URL", "").strip() or file_vals.get("url", "")
+    raw_url = file_vals.get("url", "")
     url = normalize_calendar_url(raw_url)
-    username = os.environ.get("CALDAV_USERNAME", "").strip() or file_vals.get("username", "")
-    password = os.environ.get("CALDAV_PASSWORD", "").strip() or file_vals.get("password", "")
-    calendar = os.environ.get("CALDAV_CALENDAR", "").strip() or file_vals.get("calendar", "")
+    username = file_vals.get("username", "")
+    password = file_vals.get("password", "")
+    calendar = file_vals.get("calendar", "")
     timezone = configured_timezone()
     if is_ics_feed_url(raw_url):
         missing = [] if url else ["CALDAV_URL"]

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Credential load order is now `<ws>/secrets.json` > `<ws>/calendar.json` > `<host>/secrets.json` > `CALDAV_*` env (host-level fallback) > legacy `<ws>/.env` (deprecated, warns). Previously env won over the file.
+- Helper renamed `agents_home()` -> `workspace_dir()`; MCP config probes `<host>/mcp.json` + `<ws>/mcp.json` overlay instead of `~/.agents/mcp.json`.
+- Update-check cache under `<host>/cache/updates/`.
+
 ### Fixed
 - Naive datetimes are wall times in the resolved IANA zone. A value such as `2026-10-22T10:00:00` is 10:00 in that zone, including the daylight-saving offset for that date. It is not a UTC timestamp and it is not stored as an all-day event.
 - Spring-forward gaps and fall-back overlaps are rejected unless the input carries an explicit UTC offset.
