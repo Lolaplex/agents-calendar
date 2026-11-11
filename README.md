@@ -42,8 +42,8 @@ The password is never printed, logged, or returned by a tool.
 Highest priority first:
 
 1. Process env: `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`, optional `CALDAV_CALENDAR`
-2. `~/.agents/calendar.json` (mode `0600`)
-3. `~/.agents/.env` keys `CALDAV_*`
+2. `<ws>/calendar.json` (mode `0600`)
+3. `<ws>/.env` keys `CALDAV_*`
 
 ```json
 {

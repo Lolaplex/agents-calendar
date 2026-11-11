@@ -17,7 +17,7 @@ python -m agents_calendar delete --href <href> --etag <etag>
 python -m agents_calendar serve
 ```
 
-`sync --init` / `init` merge `mcpServers.agents-calendar` into host MCP configs (Cursor, Claude, Antigravity/Gemini, Zed, Codex, VS Code Cline/Roo, Windsurf). Merge by key only; other servers stay. Cursor mkdir if `~/.cursor` missing. Never auto-write secrets. Stdout mentions `~/.agents/calendar.json`.
+`sync --init` / `init` merge `mcpServers.agents-calendar` into host MCP configs (Cursor, Claude, Antigravity/Gemini, Zed, Codex, VS Code Cline/Roo, Windsurf). Merge by key only; other servers stay. Cursor mkdir if `~/.cursor` missing. Never auto-write secrets. Stdout mentions `<ws>/calendar.json`.
 
 ## Timezones & Deterministic DST
 
@@ -26,7 +26,7 @@ python -m agents_calendar serve
 Resolution order for the zone that interprets naive input and formats local output:
 
 1. Explicit `timezone` argument (CLI `--timezone`, MCP `timezone`).
-2. Configured zone: `CALDAV_TIMEZONE`, else `AGENTS_TIMEZONE`, else `timezone` in `calendar.json` / `CALDAV_TIMEZONE` in `~/.agents/.env`.
+2. Configured zone: `CALDAV_TIMEZONE`, else `AGENTS_TIMEZONE`, else `timezone` in `calendar.json` / `CALDAV_TIMEZONE` in `<ws>/.env`.
 3. The collection's CalDAV `calendar-timezone` (or `calendar-timezone-id`) when that id is an IANA name.
 4. Host zone: `TZ`, else the OS zone database.
 5. `UTC` when the host zone cannot be determined.
@@ -48,11 +48,11 @@ Resolution order for the zone that interprets naive input and formats local outp
 
 ## Credentials & Config
 
-Host file `~/.agents/calendar.json` (mode `0600`): keys `url`, `username`, `password`, optional `calendar`, optional `timezone` (e.g. `"Europe/Berlin"`). CLI and MCP share it.
+Host file `<ws>/calendar.json` (mode `0600`): keys `url`, `username`, `password`, optional `calendar`, optional `timezone` (e.g. `"Europe/Berlin"`). CLI and MCP share it.
 
-Load order (highest wins): process env `CALDAV_URL` / `CALDAV_USERNAME` / `CALDAV_PASSWORD` / `CALDAV_CALENDAR` / `CALDAV_TIMEZONE`, else the JSON file, else `~/.agents/.env` with `CALDAV_*`.
+Load order (highest wins): process env `CALDAV_URL` / `CALDAV_USERNAME` / `CALDAV_PASSWORD` / `CALDAV_CALENDAR` / `CALDAV_TIMEZONE`, else the JSON file, else `<ws>/.env` with `CALDAV_*`.
 
-- Desktop: `~/.agents/calendar.json` (0600). Cursor MCP: file primary; mcp.json `env` optional.
+- Desktop: `<ws>/calendar.json` (0600). Cursor MCP: file primary; mcp.json `env` optional.
 - Production / Docker: Environment variables `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`. Never git, never chat.
 
 Never print the password. Never store it in traces, chat, markdown memory, or mcp.json.
