@@ -56,14 +56,14 @@ def help_json() -> dict[str, Any]:
         },
         "flags": ["--help-json"],
         "env": ["CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD", "CALDAV_CALENDAR", "CALDAV_TIMEZONE"],
-        "file": "~/.agents/calendar.json",
+        "file": "<workspace>/calendar.json",
     }
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agents-calendar",
-        description="CalDAV calendar feeler. Credentials: ~/.agents/calendar.json or CALDAV_* env.",
+        description="CalDAV calendar feeler. Credentials: <ws>/secrets.json > <ws>/calendar.json > host secrets.json > CALDAV_* env.",
     )
     parser.add_argument("--help-json", action="store_true", help="Emit machine-readable CLI spec as JSON.")
     parser.add_argument("-v", "--version", action="version", version=f"agents-calendar {__version__}")

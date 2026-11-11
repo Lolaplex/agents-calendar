@@ -9,6 +9,8 @@ import argparse
 import json
 import os
 import sys
+
+from agents_workspace import Workspace
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -28,7 +30,8 @@ def known_host_mcp_paths() -> List[Path]:
     home = Path.home()
     paths: List[Path] = [
         home / ".cursor" / "mcp.json",
-        home / ".agents" / "mcp.json",
+        Workspace.from_env().host.mcp_json,
+        Workspace.from_env().root / "mcp.json",
         home / ".gemini" / "antigravity-ide" / "mcp_config.json",
         home / ".gemini" / "config" / "mcp_config.json",
         home / ".gemini" / "config" / "mcp.json",
@@ -209,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Configured MCP servers across {len(mcp_results)} host configs:")
     for r in mcp_results:
         print(f" * {r}")
-    print(f"Credentials: {creds_path()} (url, username, password). Process env CALDAV_* wins if set.")
+    print(f"Credentials: {creds_path()} (url, username, password). secrets.json and CALDAV_* env as fallbacks.")
     print("Do not put CALDAV_PASSWORD in mcp.json.")
 
     return 0

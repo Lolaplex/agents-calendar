@@ -62,7 +62,9 @@ class ConfigTests(unittest.TestCase):
         root = Path(self._tmp.name) / "home"
         agents = root / ".agents"
         agents.mkdir(parents=True)
-        (agents / "calendar.json").write_text(
+        ws = agents / "workspaces" / "default"
+        ws.mkdir(parents=True)
+        (ws / "calendar.json").write_text(
             json.dumps({"url": "https://home.example/", "username": "home-user", "password": "home-secret"}),
             encoding="utf-8",
         )
@@ -85,18 +87,19 @@ class ConfigTests(unittest.TestCase):
             else:
                 os.environ["USERPROFILE"] = old_profile
 
-    def test_env_wins_over_file(self) -> None:
+    def test_file_wins_over_env(self) -> None:
+        # host-level env is fallback only; workspace file wins
         self._write_json(url="https://file.example/", username="file-user", password="file-secret")
         os.environ["CALDAV_URL"] = "https://env.example/"
         os.environ["CALDAV_USERNAME"] = "env-user"
         os.environ["CALDAV_PASSWORD"] = "env-secret"
         settings = load_settings()
-        self.assertEqual(settings.url, "https://env.example/")
-        self.assertEqual(settings.username, "env-user")
-        self.assertEqual(settings.password, "env-secret")
+        self.assertEqual(settings.url, "https://file.example/")
+        self.assertEqual(settings.username, "file-user")
+        self.assertEqual(settings.password, "file-secret")
 
-    def test_partial_env_overlays_file(self) -> None:
-        self._write_json(url="https://file.example/", username="file-user", password="file-secret")
+    def test_partial_env_fills_file_gaps(self) -> None:
+        self._write_json(username="file-user", password="file-secret")
         os.environ["CALDAV_URL"] = "https://env.example/"
         settings = load_settings()
         self.assertEqual(settings.url, "https://env.example/")
@@ -137,7 +140,7 @@ class ConfigTests(unittest.TestCase):
 
         os.environ["CALDAV_CALENDAR"] = "Personal"
         settings_env = load_settings()
-        self.assertEqual(settings_env.calendar, "Personal")
+        self.assertEqual(settings_env.calendar, "Work")  # file wins over env fallback
 
     def test_timezone_config_does_not_invent_a_region(self) -> None:
         saved = {key: os.environ.pop(key, None) for key in ("CALDAV_TIMEZONE", "AGENTS_TIMEZONE", "TZ")}
@@ -165,3 +168,14 @@ class ConfigTests(unittest.TestCase):
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+
+    def test_ws_secrets_overrides_calendar_json(self) -> None:
+        self._write_json(url="https://file.example/", username="file-user", password="file-secret")
+        import json as _json
+        from pathlib import Path as _P
+        (_P(self._tmp.name) / "secrets.json").write_text(
+            _json.dumps({"caldav": {"url": "https://wssec.example/"}}), encoding="utf-8"
+        )
+        settings = load_settings()
+        self.assertEqual(settings.url, "https://wssec.example/")
+        self.assertEqual(settings.username, "file-user")
