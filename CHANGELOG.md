@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Config tests write `<ws>/calendar.json`, `<ws>/.env`, and `<ws>/secrets.json` under `workspaces/default/`; suite removed `AGENTS_HOME`, isolation runs through `AGENTS_HOST_DIR`.
+
+### Changed
 - `.mailmap` maps legacy `Klix`/`Felix Kempf` author names to `Klix927` (no history rewrite; display only).
 
 ### Changed

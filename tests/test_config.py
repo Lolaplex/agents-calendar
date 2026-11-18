@@ -15,8 +15,8 @@ _KEYS = ("CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD", "CALDAV_CALENDAR")
 class ConfigTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
-        self._old_agents = os.environ.get("AGENTS_HOME")
-        os.environ["AGENTS_HOME"] = self._tmp.name
+        self._old_agents = os.environ.get("AGENTS_HOST_DIR")
+        os.environ["AGENTS_HOST_DIR"] = self._tmp.name
         self._old = {k: os.environ.pop(k, None) for k in _KEYS}
 
     def tearDown(self) -> None:
@@ -26,13 +26,15 @@ class ConfigTests(unittest.TestCase):
             else:
                 os.environ[key] = val
         if self._old_agents is None:
-            os.environ.pop("AGENTS_HOME", None)
+            os.environ.pop("AGENTS_HOST_DIR", None)
         else:
-            os.environ["AGENTS_HOME"] = self._old_agents
+            os.environ["AGENTS_HOST_DIR"] = self._old_agents
         self._tmp.cleanup()
 
     def _write_json(self, **fields: str) -> Path:
-        path = Path(self._tmp.name) / "calendar.json"
+        ws = Path(self._tmp.name) / "workspaces" / "default"
+        ws.mkdir(parents=True, exist_ok=True)
+        path = ws / "calendar.json"
         path.write_text(json.dumps(fields), encoding="utf-8")
         return path
 
@@ -58,7 +60,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.password, "file-secret")
 
     def test_file_load_temp_home(self) -> None:
-        os.environ.pop("AGENTS_HOME", None)
+        os.environ.pop("AGENTS_HOST_DIR", None)
         root = Path(self._tmp.name) / "home"
         agents = root / ".agents"
         agents.mkdir(parents=True)
@@ -107,7 +109,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.password, "file-secret")
 
     def test_dotenv_when_json_missing(self) -> None:
-        env_path = Path(self._tmp.name) / ".env"
+        env_path = Path(self._tmp.name) / "workspaces" / "default" / ".env"
+        env_path.parent.mkdir(parents=True, exist_ok=True)
         env_path.write_text(
             "CALDAV_URL=https://dotenv.example/\n"
             "CALDAV_USERNAME=dot-user\n"
@@ -120,7 +123,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.password, "dot-secret")
 
     def test_invalid_json_does_not_print_password(self) -> None:
-        path = Path(self._tmp.name) / "calendar.json"
+        path = Path(self._tmp.name) / "workspaces" / "default" / "calendar.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("{ not json, password=leaked-secret }", encoding="utf-8")
         with self.assertRaises(ConfigError) as ctx:
             load_settings()
@@ -173,7 +177,7 @@ class ConfigTests(unittest.TestCase):
         self._write_json(url="https://file.example/", username="file-user", password="file-secret")
         import json as _json
         from pathlib import Path as _P
-        (_P(self._tmp.name) / "secrets.json").write_text(
+        (_P(self._tmp.name) / "workspaces" / "default" / "secrets.json").write_text(
             _json.dumps({"caldav": {"url": "https://wssec.example/"}}), encoding="utf-8"
         )
         settings = load_settings()
