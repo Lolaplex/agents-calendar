@@ -24,6 +24,7 @@ def help_json() -> dict[str, Any]:
     return {
         "name": "agents-calendar",
         "version": __version__,
+        "cordis_expose": True,
         "commands": {
             "calendars": {
                 "usage": "agents-calendar calendars",
@@ -34,15 +35,18 @@ def help_json() -> dict[str, Any]:
                 "usage": "agents-calendar list [--calendar NAME] --from ISO --to ISO [--timezone TZ]",
                 "description": "List VEVENTs in the time range. Naive bounds are wall times in the resolved IANA zone. The server expands recurrence.",
                 "side_effects": "read-only",
-                "parameters": _obj(
-                    {
-                        "from": {**s, "description": "Range start ISO (naive = wall time)"},
-                        "to": {**s, "description": "Range end ISO (naive = wall time)"},
-                        "calendar": {**s, "description": "Calendar collection name or URL"},
-                        "timezone": {**s, "description": "IANA zone for naive bounds and local output"},
-                    },
-                    ["from", "to"],
-                ),
+                "parameters": {
+                    **_obj(
+                        {
+                            "from": {**s, "description": "Range start ISO. Naive = wall time in the resolved zone (DST gap and overlap instants need an explicit offset); Z and numeric offsets stay absolute"},
+                            "to": {**s, "description": "Range end ISO. Naive = wall time in the resolved zone (DST gap and overlap instants need an explicit offset); Z and numeric offsets stay absolute"},
+                            "calendar": {**s, "description": "Calendar collection name or URL"},
+                            "timezone": {**s, "description": "IANA zone for naive bounds and local output. Default: CALDAV_TIMEZONE, calendar-timezone, host zone, UTC"},
+                        },
+                        ["from", "to"],
+                    ),
+                    "description": "Each event carries dtstart, dtstart_local, dtend, dtend_local, timezone, all_day, calendar.",
+                },
             },
             "get": {
                 "usage": "agents-calendar get --href HREF [--timezone TZ]",
@@ -51,7 +55,7 @@ def help_json() -> dict[str, Any]:
                 "parameters": _obj(
                     {
                         "href": {**s, "description": "Event href"},
-                        "timezone": {**s, "description": "IANA zone for local output"},
+                        "timezone": {**s, "description": "IANA zone for local output. Default: CALDAV_TIMEZONE, calendar-timezone, host zone, UTC"},
                     },
                     ["href"],
                 ),
@@ -63,12 +67,12 @@ def help_json() -> dict[str, Any]:
                 "parameters": _obj(
                     {
                         "summary": s,
-                        "dtstart": {**s, "description": "Start ISO or YYYY-MM-DD"},
-                        "dtend": {**s, "description": "End ISO or YYYY-MM-DD (exclusive for all-day)"},
+                        "dtstart": {**s, "description": "Start ISO or YYYY-MM-DD. Naive = wall time in the resolved zone; an explicit offset or Z stays absolute. A DST gap or ambiguous naive instant errors — retry with an explicit offset"},
+                        "dtend": {**s, "description": "End ISO or YYYY-MM-DD (exclusive for all-day). Naive = wall time; explicit offset or Z stays absolute"},
                         "calendar": {**s, "description": "Calendar collection name or URL"},
                         "location": s,
                         "description": s,
-                        "timezone": {**s, "description": "IANA zone for naive wall times"},
+                        "timezone": {**s, "description": "IANA zone for naive wall times; Z and numeric offsets stay absolute. Default: CALDAV_TIMEZONE, calendar-timezone, host zone, UTC"},
                         "all_day": {"type": "boolean", "description": "All-day event (VALUE=DATE)"},
                         "status": {**s, "description": "e.g. CONFIRMED, TENTATIVE"},
                     },
@@ -84,11 +88,11 @@ def help_json() -> dict[str, Any]:
                         "href": {**s, "description": "Event href"},
                         "etag": {**s, "description": "Current etag (If-Match)"},
                         "summary": s,
-                        "dtstart": s,
-                        "dtend": s,
+                        "dtstart": {**s, "description": "Start ISO. Naive = wall time in the resolved zone; an explicit offset or Z stays absolute. A DST gap or ambiguous naive instant errors — retry with an explicit offset"},
+                        "dtend": {**s, "description": "End ISO. Naive = wall time; explicit offset or Z stays absolute"},
                         "location": s,
                         "description": s,
-                        "timezone": s,
+                        "timezone": {**s, "description": "IANA zone for naive wall times. Default: CALDAV_TIMEZONE, calendar-timezone, host zone, UTC"},
                         "status": s,
                     },
                     ["href", "etag"],
