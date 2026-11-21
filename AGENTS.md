@@ -48,9 +48,9 @@ Resolution order for the zone that interprets naive input and formats local outp
 
 ## Credentials & Config
 
-Host file `<ws>/calendar.json` (mode `0600`): keys `url`, `username`, `password`, optional `calendar`, optional `timezone` (e.g. `"Europe/Berlin"`). CLI and MCP share it.
+Workspace file `<ws>/calendar.json` (mode `0600`): non-secret keys `url`, `username`, optional `calendar`, optional `timezone` (e.g. `"Europe/Berlin"`). `CALDAV_PASSWORD` lives in the Host Secret Vault (`<host>/secrets/ws-<id>.json` or `host.json`), never written to `calendar.json`. CLI and MCP share it.
 
-Load order (highest wins): process env `CALDAV_URL` / `CALDAV_USERNAME` / `CALDAV_PASSWORD` / `CALDAV_CALENDAR` / `CALDAV_TIMEZONE`, else the JSON file, else `<ws>/.env` with `CALDAV_*`.
+Load order (highest wins): Host Secret Vault for `CALDAV_PASSWORD` (`ws-<id>.json` > `<ws>/secrets.json` > keyring > `host.json` > `<host>/secrets.json`; set `AGENTS_SECRETS_ORDER=env-first` so process env / `/run/secrets` overrides the vault), then `<ws>/secrets.json` (`caldav` section), `<ws>/calendar.json`, `<host>/secrets.json` (`caldav` section), `CALDAV_URL` / `CALDAV_USERNAME` / `CALDAV_PASSWORD` / `CALDAV_CALENDAR` / `CALDAV_TIMEZONE` env fallback, and legacy `<ws>/.env` (deprecated, warns).
 
 - Desktop: `<ws>/calendar.json` (0600). Cursor MCP: file primary; mcp.json `env` optional.
 - Production / Docker: Environment variables `CALDAV_URL`, `CALDAV_USERNAME`, `CALDAV_PASSWORD`. Never git, never chat.

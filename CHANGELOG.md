@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--help-json` emits `cordis_expose: true` so agents-harness auto-mounts this package's commands as Cordis tools when no checked-in manifest exists (#32/#34).
+- `--help-json` commands now carry `side_effects` and JSON `parameters` (required fields emit as the CLI's positional fallbacks), so agents-harness Cordis discovery classifies and maps calls live — `calendars`/`list`/`get` are read-only, the rest mutating.
+
+### Changed
+- Config tests write `<ws>/calendar.json`, `<ws>/.env`, and `<ws>/secrets.json` under `workspaces/default/`; suite removed `AGENTS_HOME`, isolation runs through `AGENTS_HOST_DIR`.
+
 ### Changed
 - `.mailmap` maps legacy `Klix`/`Felix Kempf` author names to `Klix927` (no history rewrite; display only).
 

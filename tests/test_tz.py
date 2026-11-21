@@ -16,9 +16,9 @@ class ZoneResolutionTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self._saved = {
             key: os.environ.get(key)
-            for key in ("AGENTS_HOME", "CALDAV_TIMEZONE", "AGENTS_TIMEZONE", "TZ")
+            for key in ("AGENTS_HOST_DIR", "CALDAV_TIMEZONE", "AGENTS_TIMEZONE", "TZ")
         }
-        os.environ["AGENTS_HOME"] = self._tmp.name
+        os.environ["AGENTS_HOST_DIR"] = self._tmp.name
         for key in ("CALDAV_TIMEZONE", "AGENTS_TIMEZONE", "TZ"):
             os.environ.pop(key, None)
 

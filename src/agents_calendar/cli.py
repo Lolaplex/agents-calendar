@@ -12,46 +12,118 @@ from .config import ConfigError, load_settings
 from .ics import IcsError
 
 
+def _obj(props: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
+    out: dict[str, Any] = {"type": "object", "properties": props}
+    if required:
+        out["required"] = required
+    return out
+
+
 def help_json() -> dict[str, Any]:
+    s = {"type": "string"}
     return {
         "name": "agents-calendar",
         "version": __version__,
+        "cordis_expose": True,
         "commands": {
             "calendars": {
                 "usage": "agents-calendar calendars",
                 "description": "List calendar collections under CALDAV_URL.",
+                "side_effects": "read-only",
             },
             "list": {
                 "usage": "agents-calendar list [--calendar NAME] --from ISO --to ISO [--timezone TZ]",
                 "description": "List VEVENTs in the time range. Naive bounds are wall times in the resolved IANA zone. The server expands recurrence.",
+                "side_effects": "read-only",
+                "parameters": {
+                    **_obj(
+                        {
+                            "from": {**s, "description": "Range start ISO. Naive = wall time in the resolved zone (DST gap and overlap instants need an explicit offset); Z and numeric offsets stay absolute"},
+                            "to": {**s, "description": "Range end ISO. Naive = wall time in the resolved zone (DST gap and overlap instants need an explicit offset); Z and numeric offsets stay absolute"},
+                            "calendar": {**s, "description": "Calendar collection name or URL"},
+                            "timezone": {**s, "description": "IANA zone for naive bounds and local output. Default: CALDAV_TIMEZONE, calendar-timezone, host zone, UTC"},
+                        },
+                        ["from", "to"],
+                    ),
+                    "description": "Each event carries dtstart, dtstart_local, dtend, dtend_local, timezone, all_day, calendar.",
+                },
             },
             "get": {
                 "usage": "agents-calendar get --href HREF [--timezone TZ]",
                 "description": "Get a VEVENT by href with local and UTC times.",
+                "side_effects": "read-only",
+                "parameters": _obj(
+                    {
+                        "href": {**s, "description": "Event href"},
+                        "timezone": {**s, "description": "IANA zone for local output. Default: CALDAV_TIMEZONE, calendar-timezone, host zone, UTC"},
+                    },
+                    ["href"],
+                ),
             },
             "add": {
                 "usage": "agents-calendar add [--calendar NAME] --summary TEXT --dtstart ISO --dtend ISO [--location TEXT] [--description TEXT] [--timezone TZ] [--all-day]",
                 "description": "Create a VEVENT (If-None-Match: *). Naive dtstart/dtend are wall times in the resolved IANA zone. Z and numeric offsets are absolute. --all-day or dates write VALUE=DATE with an exclusive DTEND.",
+                "side_effects": "mutating",
+                "parameters": _obj(
+                    {
+                        "summary": s,
+                        "dtstart": {**s, "description": "Start ISO or YYYY-MM-DD. Naive = wall time in the resolved zone; an explicit offset or Z stays absolute. A DST gap or ambiguous naive instant errors — retry with an explicit offset"},
+                        "dtend": {**s, "description": "End ISO or YYYY-MM-DD (exclusive for all-day). Naive = wall time; explicit offset or Z stays absolute"},
+                        "calendar": {**s, "description": "Calendar collection name or URL"},
+                        "location": s,
+                        "description": s,
+                        "timezone": {**s, "description": "IANA zone for naive wall times; Z and numeric offsets stay absolute. Default: CALDAV_TIMEZONE, calendar-timezone, host zone, UTC"},
+                        "all_day": {"type": "boolean", "description": "All-day event (VALUE=DATE)"},
+                        "status": {**s, "description": "e.g. CONFIRMED, TENTATIVE"},
+                    },
+                    ["summary", "dtstart", "dtend"],
+                ),
             },
             "update": {
                 "usage": "agents-calendar update --href HREF --etag ETAG [--summary TEXT] [--dtstart ISO] [--dtend ISO] [--location TEXT] [--description TEXT] [--timezone TZ]",
                 "description": "Replace fields you pass (If-Match etag). RRULE, VALARM, and other omitted properties are kept. SEQUENCE increments.",
+                "side_effects": "mutating",
+                "parameters": _obj(
+                    {
+                        "href": {**s, "description": "Event href"},
+                        "etag": {**s, "description": "Current etag (If-Match)"},
+                        "summary": s,
+                        "dtstart": {**s, "description": "Start ISO. Naive = wall time in the resolved zone; an explicit offset or Z stays absolute. A DST gap or ambiguous naive instant errors — retry with an explicit offset"},
+                        "dtend": {**s, "description": "End ISO. Naive = wall time; explicit offset or Z stays absolute"},
+                        "location": s,
+                        "description": s,
+                        "timezone": {**s, "description": "IANA zone for naive wall times. Default: CALDAV_TIMEZONE, calendar-timezone, host zone, UTC"},
+                        "status": s,
+                    },
+                    ["href", "etag"],
+                ),
             },
             "delete": {
                 "usage": "agents-calendar delete --href HREF --etag ETAG",
                 "description": "Delete a VEVENT (If-Match etag).",
+                "side_effects": "mutating",
+                "parameters": _obj(
+                    {
+                        "href": {**s, "description": "Event href"},
+                        "etag": {**s, "description": "Current etag (If-Match)"},
+                    },
+                    ["href", "etag"],
+                ),
             },
             "serve": {
                 "usage": "agents-calendar serve",
                 "description": "Start FastMCP stdio server.",
+                "side_effects": "mutating",
             },
             "init": {
                 "usage": "agents-calendar init",
                 "description": "Merge mcpServers.agents-calendar into host MCP configs.",
+                "side_effects": "mutating",
             },
             "sync": {
                 "usage": "agents-calendar sync --init",
                 "description": "Merge mcpServers.agents-calendar into host MCP configs.",
+                "side_effects": "mutating",
             },
         },
         "flags": ["--help-json"],
