@@ -18,7 +18,6 @@ try:
         Host,
         Workspace,
         resolve_secret,
-        secrets_ws_file,
         write_secret,
     )
 except ImportError:
@@ -26,7 +25,6 @@ except ImportError:
     Host = None  # type: ignore[assignment]
     Workspace = None  # type: ignore[assignment]
     resolve_secret = None  # type: ignore[assignment]
-    secrets_ws_file = None  # type: ignore[assignment]
     write_secret = None  # type: ignore[assignment]
 
 
@@ -240,22 +238,6 @@ def _load_secrets_file(path: Path) -> dict[str, str]:
     return _map_json(section)
 
 
-def _read_ws_vault_password(ws: object) -> str:
-    if secrets_ws_file is None or ws is None:
-        return ""
-    path = secrets_ws_file(ws)
-    if not path.is_file():
-        return ""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return ""
-    if not isinstance(data, dict):
-        return ""
-    val = data.get("CALDAV_PASSWORD")
-    return val.strip() if isinstance(val, str) and val.strip() else ""
-
-
 def _load_file() -> dict[str, str]:
     if Workspace is not None:
         ws = Workspace.from_env()
@@ -275,14 +257,14 @@ def _load_file() -> dict[str, str]:
                 out.setdefault(key, val)
 
     order = os.environ.get(ENV_SECRETS_ORDER, "").strip().lower()
-    if order == "env-first" and resolve_secret is not None:
-        vault_pw = resolve_secret("CALDAV_PASSWORD", ws=ws).strip()
+    if resolve_secret is not None:
+        if order == "env-first":
+            vault_pw = resolve_secret("CALDAV_PASSWORD", ws=ws).strip()
+        else:
+            env_no_pw = {k: v for k, v in os.environ.items() if k != "CALDAV_PASSWORD"}
+            vault_pw = resolve_secret("CALDAV_PASSWORD", ws=ws, env=env_no_pw).strip()
         if vault_pw:
             out["password"] = vault_pw
-    elif ws is not None:
-        ws_vault_pw = _read_ws_vault_password(ws)
-        if ws_vault_pw:
-            out["password"] = ws_vault_pw
 
     # highest wins first; setdefault keeps earlier (higher) precedence
     if ws_secrets.is_file():
@@ -296,11 +278,6 @@ def _load_file() -> dict[str, str]:
         except OSError as exc:
             raise ConfigError(f"unreadable {json_path}") from exc
         merge(_map_json(raw))
-    if "password" not in out and resolve_secret is not None:
-        env_no_pw = {k: v for k, v in os.environ.items() if k != "CALDAV_PASSWORD"}
-        vault_pw = resolve_secret("CALDAV_PASSWORD", ws=ws, env=env_no_pw).strip()
-        if vault_pw:
-            out["password"] = vault_pw
     if host_secrets.is_file() and host_secrets != ws_secrets:
         merge(_load_secrets_file(host_secrets))
     if "password" not in out and resolve_secret is not None:
