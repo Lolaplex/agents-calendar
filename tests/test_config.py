@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
+from unittest.mock import patch
 
-from agents_calendar.config import ConfigError, load_settings
+from agents_workspace import Host, doctor, resolve_secret, write_secret
+
+from agents_calendar import config as config_mod
+from agents_calendar.config import ConfigError, Settings, load_settings, save_settings
 
 
 _KEYS = ("CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD", "CALDAV_CALENDAR")
@@ -183,3 +190,86 @@ class ConfigTests(unittest.TestCase):
         settings = load_settings()
         self.assertEqual(settings.url, "https://wssec.example/")
         self.assertEqual(settings.username, "file-user")
+
+    def test_save_settings_stores_password_in_vault_not_calendar_json(self) -> None:
+        legacy_path = self._write_json(
+            url="https://old.example/", username="alice", password="legacy-password"
+        )
+        saved_path = save_settings(
+            Settings(
+                url="https://dav.example/cal/",
+                username="alice",
+                password="vault-password",
+                calendar="Work",
+                timezone="Europe/Berlin",
+            )
+        )
+        self.assertEqual(saved_path, legacy_path)
+        raw = saved_path.read_text(encoding="utf-8")
+        disk = json.loads(raw)
+        self.assertNotIn("password", disk)
+        self.assertNotIn("vault-password", raw)
+        self.assertNotIn("legacy-password", raw)
+
+        loaded = load_settings()
+        self.assertEqual(loaded.url, "https://dav.example/cal/")
+        self.assertEqual(loaded.username, "alice")
+        self.assertEqual(loaded.password, "vault-password")
+        self.assertEqual(loaded.calendar, "Work")
+        self.assertEqual(loaded.timezone, "Europe/Berlin")
+        self.assertEqual(doctor(Host.open(self._tmp.name))["status"], "ok")
+
+    def test_vault_precedence_and_env_first_override(self) -> None:
+        host = Host.open(self._tmp.name)
+        ws = host.create("default")
+        self._write_json(url="https://dav.example/", username="alice", password="legacy-pw")
+        write_secret("CALDAV_PASSWORD", "ws-vault-pw", ws=ws, scope="workspace")
+        os.environ["CALDAV_PASSWORD"] = "env-pw"
+        self.assertEqual(load_settings().password, "ws-vault-pw")
+
+        with patch.dict(os.environ, {"AGENTS_SECRETS_ORDER": "env-first"}):
+            self.assertEqual(load_settings().password, "env-pw")
+
+    def test_host_vault_fallback_when_calendar_json_has_no_password(self) -> None:
+        host = Host.open(self._tmp.name)
+        host.create("default")
+        self._write_json(url="https://dav.example/", username="alice")
+        write_secret("CALDAV_PASSWORD", "host-vault-pw", host=host, scope="host")
+        self.assertEqual(load_settings().password, "host-vault-pw")
+
+    def test_standalone_without_agents_workspace(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "agents_calendar_standalone_cfg_test", config_mod.__file__
+        )
+        assert spec is not None and spec.loader is not None
+        standalone_mod = importlib.util.module_from_spec(spec)
+        with patch.dict(
+            sys.modules,
+            {
+                "agents_workspace": None,
+                "agents_calendar_standalone_cfg_test": standalone_mod,
+            },
+        ):
+            spec.loader.exec_module(standalone_mod)
+        self.assertIsNone(standalone_mod.Host)
+        self.assertIsNone(standalone_mod.Workspace)
+        self.assertIsNone(standalone_mod.resolve_secret)
+        self.assertIsNone(standalone_mod.write_secret)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            path = standalone_mod.save_settings(
+                standalone_mod.Settings(
+                    url="https://standalone.example/",
+                    username="alice",
+                    password="pw-not-written",
+                )
+            )
+        self.assertTrue(any(issubclass(w.category, UserWarning) for w in caught))
+        disk = json.loads(path.read_text(encoding="utf-8"))
+        self.assertNotIn("password", disk)
+
+        os.environ["CALDAV_PASSWORD"] = "env-standalone-pw"
+        loaded = standalone_mod.load_settings()
+        self.assertEqual(loaded.url, "https://standalone.example/")
+        self.assertEqual(loaded.password, "env-standalone-pw")

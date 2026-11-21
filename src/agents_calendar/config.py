@@ -13,10 +13,21 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    from agents_workspace import Host, Workspace
+    from agents_workspace import (
+        ENV_SECRETS_ORDER,
+        Host,
+        Workspace,
+        resolve_secret,
+        secrets_ws_file,
+        write_secret,
+    )
 except ImportError:
+    ENV_SECRETS_ORDER = "AGENTS_SECRETS_ORDER"
     Host = None  # type: ignore[assignment]
     Workspace = None  # type: ignore[assignment]
+    resolve_secret = None  # type: ignore[assignment]
+    secrets_ws_file = None  # type: ignore[assignment]
+    write_secret = None  # type: ignore[assignment]
 
 
 class ConfigError(ValueError):
@@ -229,6 +240,22 @@ def _load_secrets_file(path: Path) -> dict[str, str]:
     return _map_json(section)
 
 
+def _read_ws_vault_password(ws: object) -> str:
+    if secrets_ws_file is None or ws is None:
+        return ""
+    path = secrets_ws_file(ws)
+    if not path.is_file():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    val = data.get("CALDAV_PASSWORD")
+    return val.strip() if isinstance(val, str) and val.strip() else ""
+
+
 def _load_file() -> dict[str, str]:
     if Workspace is not None:
         ws = Workspace.from_env()
@@ -236,6 +263,7 @@ def _load_file() -> dict[str, str]:
         ws_secrets = ws.secrets
         host_secrets = Host.from_env().secrets if Host is not None else ws.host.secrets
     else:
+        ws = None
         ws_dir = _fallback_host_dir()
         ws_secrets = ws_dir / "secrets.json"
         host_secrets = ws_dir / "secrets.json"
@@ -245,6 +273,16 @@ def _load_file() -> dict[str, str]:
         for key, val in src.items():
             if val:
                 out.setdefault(key, val)
+
+    order = os.environ.get(ENV_SECRETS_ORDER, "").strip().lower()
+    if order == "env-first" and resolve_secret is not None:
+        vault_pw = resolve_secret("CALDAV_PASSWORD", ws=ws).strip()
+        if vault_pw:
+            out["password"] = vault_pw
+    elif ws is not None:
+        ws_vault_pw = _read_ws_vault_password(ws)
+        if ws_vault_pw:
+            out["password"] = ws_vault_pw
 
     # highest wins first; setdefault keeps earlier (higher) precedence
     if ws_secrets.is_file():
@@ -258,8 +296,17 @@ def _load_file() -> dict[str, str]:
         except OSError as exc:
             raise ConfigError(f"unreadable {json_path}") from exc
         merge(_map_json(raw))
+    if "password" not in out and resolve_secret is not None:
+        env_no_pw = {k: v for k, v in os.environ.items() if k != "CALDAV_PASSWORD"}
+        vault_pw = resolve_secret("CALDAV_PASSWORD", ws=ws, env=env_no_pw).strip()
+        if vault_pw:
+            out["password"] = vault_pw
     if host_secrets.is_file() and host_secrets != ws_secrets:
         merge(_load_secrets_file(host_secrets))
+    if "password" not in out and resolve_secret is not None:
+        vault_pw = resolve_secret("CALDAV_PASSWORD", ws=ws).strip()
+        if vault_pw:
+            out["password"] = vault_pw
     for name in ("url", "username", "password", "calendar", "timezone"):
         env_name = f"CALDAV_{name.upper()}"
         val = os.environ.get(env_name, "").strip()
@@ -277,6 +324,54 @@ def _load_file() -> dict[str, str]:
         except OSError as exc:
             raise ConfigError(f"unreadable {env_path}") from exc
     return out
+
+
+def save_settings(settings: Settings, *, scope: str = "workspace") -> Path:
+    """Persist non-secret settings to ``calendar.json`` and password to Host Secret Vault."""
+    if scope not in ("workspace", "host"):
+        raise ValueError(f"invalid secret scope: {scope!r}")
+    path = creds_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, str] = {}
+    if settings.url.strip():
+        payload["url"] = normalize_calendar_url(settings.url)
+    if settings.username.strip():
+        payload["username"] = settings.username.strip()
+    if settings.calendar.strip():
+        payload["calendar"] = settings.calendar.strip()
+    if settings.timezone.strip():
+        payload["timezone"] = settings.timezone.strip()
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+    clean_pw = settings.password.strip()
+    if clean_pw:
+        if write_secret is not None:
+            if scope == "workspace":
+                if Workspace is None:
+                    raise RuntimeError("Workspace resolver unavailable")
+                write_secret("CALDAV_PASSWORD", clean_pw, ws=Workspace.from_env(), scope="workspace")
+            else:
+                write_secret("CALDAV_PASSWORD", clean_pw, scope="host")
+        else:
+            import warnings
+
+            warnings.warn(
+                "agents-workspace is not installed; cannot persist CALDAV_PASSWORD "
+                "to host vault (set CALDAV_PASSWORD in the environment instead)",
+                UserWarning,
+                stacklevel=2,
+            )
+    return path
 
 
 def load_settings() -> Settings:
