@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from agents_workspace import Workspace
+try:
+    from agents_workspace import Host, Workspace
+except ImportError:
+    Host = None  # type: ignore[assignment]
+    Workspace = None  # type: ignore[assignment]
 
 
 class ConfigError(ValueError):
@@ -43,8 +47,15 @@ def normalize_calendar_url(url: str) -> str:
     return raw
 
 
+def _fallback_host_dir() -> Path:
+    raw = os.environ.get("AGENTS_HOST_DIR", "").strip()
+    return Path(raw).expanduser() if raw else Path.home() / ".agents"
+
+
 def workspace_dir() -> Path:
-    return Workspace.from_env().root
+    if Workspace is not None:
+        return Workspace.from_env().dir
+    return _fallback_host_dir()
 
 
 def creds_path() -> Path:
@@ -219,7 +230,15 @@ def _load_secrets_file(path: Path) -> dict[str, str]:
 
 
 def _load_file() -> dict[str, str]:
-    ws = Workspace.from_env()
+    if Workspace is not None:
+        ws = Workspace.from_env()
+        ws_dir = ws.dir
+        ws_secrets = ws.secrets
+        host_secrets = Host.from_env().secrets if Host is not None else ws.host.secrets
+    else:
+        ws_dir = _fallback_host_dir()
+        ws_secrets = ws_dir / "secrets.json"
+        host_secrets = ws_dir / "secrets.json"
     out: dict[str, str] = {}
 
     def merge(src: dict[str, str]) -> None:
@@ -228,10 +247,9 @@ def _load_file() -> dict[str, str]:
                 out.setdefault(key, val)
 
     # highest wins first; setdefault keeps earlier (higher) precedence
-    ws_secrets = ws.secrets
     if ws_secrets.is_file():
         merge(_load_secrets_file(ws_secrets))
-    json_path = ws.root / "calendar.json"
+    json_path = ws_dir / "calendar.json"
     if json_path.is_file():
         try:
             raw = json.loads(json_path.read_text(encoding="utf-8"))
@@ -240,15 +258,14 @@ def _load_file() -> dict[str, str]:
         except OSError as exc:
             raise ConfigError(f"unreadable {json_path}") from exc
         merge(_map_json(raw))
-    host_secrets = ws.host.secrets
-    if host_secrets.is_file():
+    if host_secrets.is_file() and host_secrets != ws_secrets:
         merge(_load_secrets_file(host_secrets))
     for name in ("url", "username", "password", "calendar", "timezone"):
         env_name = f"CALDAV_{name.upper()}"
         val = os.environ.get(env_name, "").strip()
         if val:
             out.setdefault(name, val)
-    env_path = ws.root / ".env"
+    env_path = ws_dir / ".env"
     if env_path.is_file():
         import warnings
         warnings.warn(

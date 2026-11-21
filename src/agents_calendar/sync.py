@@ -9,8 +9,6 @@ import argparse
 import json
 import os
 import sys
-
-from agents_workspace import Workspace
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -25,13 +23,26 @@ def mcp_entry() -> Dict[str, Any]:
     }
 
 
+def _fallback_host_dir() -> Path:
+    raw = os.environ.get("AGENTS_HOST_DIR", "").strip()
+    return Path(raw).expanduser() if raw else Path.home() / ".agents"
+
+
+def _mcp_paths_for_resolver() -> List[Path]:
+    try:
+        from agents_workspace import Host, Workspace
+
+        return [Host.from_env().mcp_json, Workspace.from_env().dir / "mcp.json"]
+    except ImportError:
+        return [_fallback_host_dir() / "mcp.json"]
+
+
 def known_host_mcp_paths() -> List[Path]:
     """Returns a list of all potential MCP configuration file paths on the host system."""
     home = Path.home()
     paths: List[Path] = [
         home / ".cursor" / "mcp.json",
-        Workspace.from_env().host.mcp_json,
-        Workspace.from_env().root / "mcp.json",
+        *_mcp_paths_for_resolver(),
         home / ".gemini" / "antigravity-ide" / "mcp_config.json",
         home / ".gemini" / "config" / "mcp_config.json",
         home / ".gemini" / "config" / "mcp.json",
