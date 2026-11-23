@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agents-calendar"
-version = "0.1.2"
+version = "0.2.0"
 description = "CalDAV calendar feeler for agents (CLI + MCP). Stdlib HTTP, no caldav/icalendar libs."
 readme = "README.md"
 license = "MIT"
@@ -15,7 +15,7 @@ dependencies = [
     "mcp>=1.0.0,<2",
     # zoneinfo needs the IANA database. Windows and minimal images do not ship it.
     "tzdata",
-    "agents-workspace>=0.1.0,<1",
+    "agents-workspace>=0.2.0,<1",
 ]
 keywords = ["caldav", "calendar", "mcp", "agents", "cli"]
 classifiers = [
