@@ -435,6 +435,10 @@ def _parsed_instant(parsed: dict[str, Any], utc_key: str, local_key: str) -> dat
     return parse_iso(source, "UTC")
 
 
+def _has_time(parsed: dict[str, Any], utc_key: str, local_key: str) -> bool:
+    return bool(parsed.get(utc_key) or parsed.get(local_key))
+
+
 def _parsed_date(parsed: dict[str, Any], key: str) -> date:
     raw = str(parsed.get(key) or "")
     if not raw:
@@ -501,8 +505,12 @@ def _replacement_times(
 
     if previous_all_day and (dtstart is None or dtend is None):
         raise IcsError("converting an all-day event to a timed event needs dtstart and dtend")
-    old_start = None if previous_all_day else _parsed_instant(parsed, "dtstart", "dtstart_local")
-    old_end = None if previous_all_day else _parsed_instant(parsed, "dtend", "dtend_local")
+    # RFC 5545 allows a VEVENT without DTEND. Read only the edges present;
+    # a missing edge matters only when the caller does not replace it.
+    old_start = None if previous_all_day or not _has_time(parsed, "dtstart", "dtstart_local") \
+        else _parsed_instant(parsed, "dtstart", "dtstart_local")
+    old_end = None if previous_all_day or not _has_time(parsed, "dtend", "dtend_local") \
+        else _parsed_instant(parsed, "dtend", "dtend_local")
     if dtstart is None:
         if old_start is None:
             raise IcsError("timed update needs dtstart")
