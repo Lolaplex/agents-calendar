@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TZID` on incoming events is honored. An IANA id uses `zoneinfo`. Any other id is resolved from the embedded `VTIMEZONE`. Floating times use the resolved zone. `Z` and numeric offsets stay absolute instants.
 - All-day events are read and written as `VALUE=DATE` with an exclusive `DTEND`. Returned `dtstart` / `dtend` are civil dates and `all_day` is true.
 - Updates keep unrelated properties (`RRULE`, `EXDATE`, `RDATE`, `VALARM`, `ATTENDEE`, `UID`, `X-` properties), bump `SEQUENCE`, and refresh `DTSTAMP` and `LAST-MODIFIED`.
+- Updating a timed event that has no `DTEND` (allowed by RFC 5545) no longer fails with "existing event has no dtend" when the update sets `dtend`. Missing edges are read only when the update keeps them.
 
 ### Added
 - Timed events are written with `DTSTART`/`DTEND;TZID=<zone>` and a `VTIMEZONE` derived from the IANA time zone database. Weekly recurrence expanded by the CalDAV server therefore stays on the same wall clock across DST. An ambiguous wall time is stored as UTC so the fall-back instant is not lost.

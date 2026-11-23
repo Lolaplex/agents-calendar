@@ -72,6 +72,22 @@ class IcsTests(unittest.TestCase):
         self.assertEqual(parsed["uid"], "keep-me")
         self.assertEqual(parsed["summary"], "New")
 
+    def test_patch_event_without_dtend(self) -> None:
+        # RFC 5545 allows a VEVENT with DTSTART only.
+        raw = (
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n"
+            "UID:no-end\r\nSUMMARY:x\r\nDTSTART:20261222T100000Z\r\n"
+            "END:VEVENT\r\nEND:VCALENDAR\r\n"
+        )
+        moved = patch_vevent(
+            raw, dtstart="2026-12-25T08:00:00Z", dtend="2026-12-25T09:00:00Z", timezone="UTC"
+        )
+        parsed = parse_vevent(moved)
+        self.assertEqual(parsed["dtstart"], "2026-12-25T08:00:00Z")
+        self.assertEqual(parsed["dtend"], "2026-12-25T09:00:00Z")
+        with self.assertRaises(IcsError):
+            patch_vevent(raw, dtstart="2026-12-25T08:00:00Z", timezone="UTC")
+
     def test_daylight_saving_time_winter_vs_summer(self) -> None:
         # 29 Nov 2026 is CET (UTC+1, winter time)
         winter_raw = emit_vevent(
