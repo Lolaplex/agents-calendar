@@ -115,16 +115,11 @@ def help_json() -> dict[str, Any]:
                 "description": "Start FastMCP stdio server.",
                 "side_effects": "mutating",
             },
-            "init": {
-                "usage": "agents-calendar init",
-                "description": "Merge mcpServers.agents-calendar into host MCP configs.",
-                "side_effects": "mutating",
-            },
-            "sync": {
-                "usage": "agents-calendar sync --init",
-                "description": "Merge mcpServers.agents-calendar into host MCP configs.",
-                "side_effects": "mutating",
-            },
+            # init / sync are host install lifecycle: they merge
+            # mcpServers.agents-calendar into host IDE configs. They stay CLI
+            # commands but are NOT declared here — cordis_expose /
+            # commands_from consumers mount every declared command, and agent
+            # turns must not mutate host IDE config.
         },
         "flags": ["--help-json"],
         "env": ["CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD", "CALDAV_CALENDAR", "CALDAV_TIMEZONE"],
